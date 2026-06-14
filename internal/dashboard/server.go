@@ -569,7 +569,7 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <div id="settingsModal" class="modal" onclick="if(event.target===this)closeSettings()">
 <div class="modal-card">
 <div class="modal-head"><div><h2>管理设置</h2><div class="hint">修改后会写入配置文件，下一轮检测使用新设置。</div></div><button class="icon-btn" onclick="closeSettings()">×</button></div>
-<div class="tabs"><div class="tab active" data-tab="basic" onclick="switchSettingsTab('basic')">基础设置</div><div class="tab" data-tab="speed" onclick="switchSettingsTab('speed')">官方测速</div><div class="tab" data-tab="dns" onclick="switchSettingsTab('dns')">地区解析</div></div>
+<div class="tabs"><div class="tab active" data-tab="basic" onclick="switchSettingsTab('basic')">基础设置</div><div class="tab" data-tab="speed" onclick="switchSettingsTab('speed')">官方测速</div><div class="tab" data-tab="dns" onclick="switchSettingsTab('dns')">地区解析</div><div class="tab" data-tab="agent" onclick="switchSettingsTab('agent')">Agent 安装</div></div>
 <section id="settings-basic" class="settings-pane">
 <div class="form-grid">
 <div class="field"><label>探测源说明</label><input id="setProbeSource" placeholder="宁波联通"></div>
@@ -600,6 +600,17 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <div class="field"><label>按地区解析域名</label><div id="recordList" class="record-list"></div></div>
 <button onclick="addRecordRow()">添加地区记录</button>
 <div class="small">记录类型已支持 A / AAAA；当前扫描器主要产出 IPv4，IPv6 候选接入后可直接添加 AAAA 记录。</div>
+</section>
+<section id="settings-agent" class="settings-pane" style="display:none">
+<div class="form-grid">
+<div class="field"><label>母鸡地址</label><input id="agentServerURL" oninput="updateAgentInstallCommand()"></div>
+<div class="field"><label>Agent ID</label><input id="agentInstallID" placeholder="hk-vps-01" oninput="updateAgentInstallCommand()"></div>
+<div class="field"><label>运营商</label><select id="agentInstallCarrier" onchange="updateAgentInstallCommand()"><option value="auto">自动识别</option><option value="cu">联通</option><option value="ct">电信</option><option value="cm">移动</option><option value="unknown">未知</option></select></div>
+<div class="field"><label>共享 Token</label><input id="agentInstallToken" placeholder="可选" oninput="updateAgentInstallCommand()"></div>
+</div>
+<div class="field"><label>一键安装命令</label><textarea id="agentInstallCommand" class="seedbox" readonly spellcheck="false"></textarea></div>
+<div class="actions"><button class="primary" onclick="copyAgentInstallCommand()">复制命令</button><button onclick="resetAgentInstallCommand()">恢复默认</button></div>
+<div id="agentInstallMsg" class="small">在 VPS 上用 root 或 sudo 执行；安装后会创建 systemd 服务并主动上报。</div>
 </section>
 <div id="settingsMsg" class="small"></div>
 <div class="modal-actions"><button onclick="closeSettings()">取消</button><button class="primary" onclick="saveSettings()">保存设置</button></div>
@@ -902,6 +913,47 @@ async function openSettings(){
  settingsMsg.textContent='';
 }
 function closeSettings(){ settingsModal.classList.remove('open'); }
+function shellQuote(v){
+ v=String(v||'');
+ if(/^[A-Za-z0-9_./:@-]+$/.test(v)){ return v; }
+ return "'"+v.replace(/'/g,"'\\''")+"'";
+}
+function defaultAgentServerURL(){
+ return window.location.origin||'http://10.0.0.234:19199';
+}
+function resetAgentInstallCommand(){
+ agentServerURL.value=defaultAgentServerURL();
+ agentInstallID.value='vps-01';
+ agentInstallCarrier.value='auto';
+ agentInstallToken.value='';
+ updateAgentInstallCommand();
+}
+function updateAgentInstallCommand(){
+ const server=(agentServerURL.value||defaultAgentServerURL()).trim().replace(/\/+$/,'');
+ const id=(agentInstallID.value||'vps-01').trim();
+ const carrier=(agentInstallCarrier.value||'auto').trim();
+ const token=(agentInstallToken.value||'').trim();
+ const parts=[
+   'curl -fsSL https://raw.githubusercontent.com/kuaichu/CFAnycastRouter/main/install.sh',
+   '| sudo bash -s --',
+   '--server '+shellQuote(server),
+   '--id '+shellQuote(id),
+   '--carrier '+shellQuote(carrier)
+ ];
+ if(token){ parts.push('--token '+shellQuote(token)); }
+ agentInstallCommand.value=parts.join(' ');
+}
+async function copyAgentInstallCommand(){
+ updateAgentInstallCommand();
+ try{
+   await navigator.clipboard.writeText(agentInstallCommand.value);
+   agentInstallMsg.textContent='已复制安装命令';
+ }catch(e){
+   agentInstallCommand.focus();
+   agentInstallCommand.select();
+   agentInstallMsg.textContent='浏览器不允许自动复制，请手动复制文本框内容';
+ }
+}
 function fillSettings(s){
  setProbeSource.value=s.probe_source||'';
  setCarrier.value=s.carrier||'auto';
@@ -927,6 +979,8 @@ function fillSettings(s){
  setSpeedPath.value=speed.path||'/__down';
  setSpeedBytes.value=speed.bytes||262144;
  setSpeedTopN.value=speed.top_n||5;
+ if(!agentServerURL.value){ resetAgentInstallCommand(); }
+ updateAgentInstallCommand();
 }
 function addRecordRow(record={}){
  const row=document.createElement('div');
