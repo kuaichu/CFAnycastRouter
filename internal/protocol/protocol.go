@@ -50,6 +50,7 @@ type AgentSnapshot struct {
 	Hostname       string              `json:"hostname"`
 	ProbeSource    string              `json:"probe_source"`
 	Carrier        string              `json:"carrier"`
+	FirstSeen      time.Time           `json:"first_seen"`
 	LastSeen       time.Time           `json:"last_seen"`
 	CandidateCount int                 `json:"candidate_count"`
 	Best           *router.Candidate   `json:"best,omitempty"`

@@ -159,3 +159,21 @@ func TestAgentCandidatesAreGroupedByCarrierAndFreshness(t *testing.T) {
 		t.Fatalf("unexpected CU candidates: %#v", got)
 	}
 }
+
+func TestAgentRegistryPersistsAndRemovesSnapshots(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agents.json")
+	registry := newAgentRegistry(path)
+	registry.upsert(protocol.AgentReport{AgentID: "cu-01", Hostname: "edge-01", Carrier: "cu"})
+
+	reloaded := newAgentRegistry(path)
+	items := reloaded.list()
+	if len(items) != 1 || items[0].AgentID != "cu-01" || items[0].FirstSeen.IsZero() {
+		t.Fatalf("unexpected persisted agents: %#v", items)
+	}
+	if !reloaded.remove("cu-01") {
+		t.Fatal("expected persisted agent to be removed")
+	}
+	if got := newAgentRegistry(path).list(); len(got) != 0 {
+		t.Fatalf("removed agent returned after reload: %#v", got)
+	}
+}

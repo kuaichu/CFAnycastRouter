@@ -53,7 +53,11 @@ type Server struct {
 }
 
 func New(port int, statePath, cfgPath string, onScan ScanFunc, onSeeds SeedsFunc, onLookup LookupFunc, onSettings SettingsFunc, onControl ControlFunc) *Server {
-	return &Server{port: port, statePath: statePath, cfgPath: cfgPath, onScan: onScan, onSeeds: onSeeds, onLookup: onLookup, onSettings: onSettings, onControl: onControl, agents: newAgentRegistry()}
+	agentStatePath := ""
+	if strings.TrimSpace(statePath) != "" {
+		agentStatePath = filepath.Join(filepath.Dir(statePath), "agents.json")
+	}
+	return &Server{port: port, statePath: statePath, cfgPath: cfgPath, onScan: onScan, onSeeds: onSeeds, onLookup: onLookup, onSettings: onSettings, onControl: onControl, agents: newAgentRegistry(agentStatePath)}
 }
 
 func (s *Server) SetAgentTokenEnv(name string) {
@@ -613,6 +617,7 @@ var page = template.Must(template.New("page").Parse(`<!doctype html>
 <style>
 :root{color-scheme:dark;--bg:#0b0f14;--panel:#121820;--muted:#8a96a8;--text:#eef3f8;--line:#253040;--ok:#36d399;--warn:#f7c948;--bad:#ff6b6b}
 body{margin:0;background:#0b0f14;color:var(--text);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body.modal-open{position:fixed;width:100%;overflow:hidden}
 main{max-width:1280px;margin:0 auto;padding:28px}
 .top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
 .top-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
@@ -630,9 +635,9 @@ button{background:#1b2532;color:var(--text);border:1px solid #344255;border-radi
 button:hover{border-color:#5b7190}button.primary{background:#123325;border-color:#236a4b;color:#d8fff0}
 button.ghost{background:transparent}button.danger{background:#3a151a;border-color:#7b2732;color:#ffd7dc}button.danger:hover{border-color:#d14b5d}button:disabled{opacity:.55;cursor:not-allowed}
 .small{font-size:12px;color:var(--muted);margin-top:8px}
-.modal{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;padding:24px;z-index:10}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;padding:24px;z-index:10;overscroll-behavior:none}
 .modal.open{display:flex}
-.modal-card{width:min(900px,calc(100vw - 48px));max-height:calc(100vh - 48px);overflow:auto;background:linear-gradient(135deg,#13202c,#102d2d);border:1px solid #31546a;border-radius:24px;padding:26px;box-shadow:0 20px 80px rgba(0,0,0,.45)}
+.modal-card{width:min(980px,calc(100vw - 48px));max-height:calc(100vh - 48px);overflow:auto;overscroll-behavior:contain;background:linear-gradient(135deg,#13202c,#102d2d);border:1px solid #31546a;border-radius:12px;padding:26px;box-shadow:0 20px 80px rgba(0,0,0,.45)}
 .modal-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:18px}
 .modal h2{font-size:24px;margin:0}.tabs{display:flex;gap:16px;border-bottom:1px solid var(--line);margin-bottom:18px}
 .tab{padding:10px 0;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent}.tab.active{color:var(--ok);border-color:var(--ok)}
@@ -644,6 +649,10 @@ button.ghost{background:transparent}button.danger{background:#3a151a;border-colo
 .record-row input,.record-row select{background:#071018;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px}
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}
 .icon-btn{width:36px;height:36px;padding:0;display:grid;place-items:center}
+.agent-summary{display:flex;gap:18px;align-items:center;margin-bottom:10px;color:var(--muted)}
+.agent-summary strong{color:var(--text);font-size:18px;margin-right:4px}.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;background:var(--muted)}
+.status-dot.online{background:var(--ok);box-shadow:0 0 0 3px rgba(54,211,153,.12)}.status-dot.offline{background:var(--bad)}
+.agent-manage-table{margin-top:10px}.agent-manage-table td:last-child,.agent-manage-table th:last-child{text-align:right}.agent-manage-table button{padding:5px 9px}
 .section-title{margin:20px 0 8px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
 .final-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
 .final-table{margin-top:10px;table-layout:fixed}.final-table th,.final-table td{padding:8px 10px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
@@ -690,7 +699,7 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <div id="settingsModal" class="modal" onclick="if(event.target===this)closeSettings()">
 <div class="modal-card">
 <div class="modal-head"><div><h2>管理设置</h2><div class="hint">修改后会写入配置文件，下一轮检测使用新设置。</div></div><button class="icon-btn" onclick="closeSettings()">×</button></div>
-<div class="tabs"><div class="tab active" data-tab="basic" onclick="switchSettingsTab('basic')">基础设置</div><div class="tab" data-tab="speed" onclick="switchSettingsTab('speed')">官方测速</div><div class="tab" data-tab="dns" onclick="switchSettingsTab('dns')">地区解析</div><div class="tab" data-tab="agent" onclick="switchSettingsTab('agent')">Agent 安装</div></div>
+<div class="tabs"><div class="tab active" data-tab="basic" onclick="switchSettingsTab('basic')">基础设置</div><div class="tab" data-tab="speed" onclick="switchSettingsTab('speed')">官方测速</div><div class="tab" data-tab="dns" onclick="switchSettingsTab('dns')">地区解析</div><div class="tab" data-tab="agent" onclick="switchSettingsTab('agent')">Agent 安装</div><div class="tab" data-tab="agents" onclick="switchSettingsTab('agents')">Agent 管理</div></div>
 <section id="settings-basic" class="settings-pane">
 <div class="form-grid">
 <div class="field"><label>探测源说明</label><input id="setProbeSource" placeholder="宁波联通"></div>
@@ -733,8 +742,12 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <div class="actions"><button class="primary" onclick="copyAgentInstallCommand()">复制命令</button><button onclick="resetAgentInstallCommand()">恢复默认</button></div>
 <div id="agentInstallMsg" class="small">在 VPS 上用 root 或 sudo 执行；安装后会创建 systemd 服务并主动上报。</div>
 </section>
+<section id="settings-agents" class="settings-pane" style="display:none">
+<div id="agentManageSummary" class="agent-summary"><span><strong>0</strong>节点</span><span><strong>0</strong>在线</span></div>
+<table class="agent-manage-table"><thead><tr><th>状态</th><th>Agent</th><th>运营商</th><th>首次注册</th><th>最后上报</th><th>最佳 IP / 地区</th><th>候选</th><th>操作</th></tr></thead><tbody id="agentManageRows"><tr><td colspan="8">等待 Agent 上报</td></tr></tbody></table>
+</section>
 <div id="settingsMsg" class="small"></div>
-<div class="modal-actions"><button onclick="closeSettings()">取消</button><button class="primary" onclick="saveSettings()">保存设置</button></div>
+<div class="modal-actions"><button onclick="closeSettings()">关闭</button><button id="saveSettingsBtn" class="primary" onclick="saveSettings()">保存设置</button></div>
 </div>
 </div>
 <div class="section-title">最终区</div>
@@ -1021,11 +1034,17 @@ function stateRows(state){
 let settingsCache=null;
 let controlCache=null;
 let fullStateCache=null;
+let agentsCache=[];
+let modalScrollY=0;
 function switchSettingsTab(tab){
  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));
  document.querySelectorAll('.settings-pane').forEach(x=>x.style.display=x.id==='settings-'+tab?'block':'none');
+ saveSettingsBtn.style.display=(tab==='agent'||tab==='agents')?'none':'';
 }
 async function openSettings(){
+ modalScrollY=window.scrollY;
+ document.body.style.top='-'+modalScrollY+'px';
+ document.body.classList.add('modal-open');
  settingsModal.classList.add('open');
  settingsMsg.textContent='正在加载设置...';
  const res=await fetch('/api/settings?ts='+Date.now()).then(r=>r.json()).catch(e=>({error:e.message}));
@@ -1034,7 +1053,13 @@ async function openSettings(){
  fillSettings(res);
  settingsMsg.textContent='';
 }
-function closeSettings(){ settingsModal.classList.remove('open'); }
+function closeSettings(){
+ if(!settingsModal.classList.contains('open')){ return; }
+ settingsModal.classList.remove('open');
+ document.body.classList.remove('modal-open');
+ document.body.style.top='';
+ window.scrollTo(0,modalScrollY);
+}
 function shellQuote(v){
  v=String(v||'');
  if(/^[A-Za-z0-9_./:@-]+$/.test(v)){ return v; }
@@ -1155,8 +1180,43 @@ async function saveSettings(){
  settingsCache=res.settings;
  setTimeout(closeSettings,700);
 }
+function escapeHTML(v){ return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function agentOnline(a){
+ const seen=a?.last_seen?new Date(a.last_seen).getTime():0;
+ const threshold=Math.max(Number(settingsCache?.check_interval_seconds||300)*2000,180000);
+ return seen>0&&Date.now()-seen<=threshold;
+}
+function renderAgentManagement(list){
+ const online=list.filter(agentOnline).length;
+ agentManageSummary.innerHTML='<span><strong>'+list.length+'</strong>节点</span><span><strong>'+online+'</strong>在线</span>';
+ if(!list.length){
+   agentManageRows.innerHTML='<tr><td colspan="8">尚无 Agent 上报。安装后通常会在一个检测周期内出现。</td></tr>';
+   return;
+ }
+ agentManageRows.innerHTML=list.map(a=>{
+   const best=a.best||{};
+   const online=agentOnline(a);
+   const id=escapeHTML(a.agent_id||'-');
+   const host=a.hostname&&a.hostname!==a.agent_id?' / '+escapeHTML(a.hostname):'';
+   const first=a.first_seen?new Date(a.first_seen).toLocaleString():'-';
+   const seen=a.last_seen?new Date(a.last_seen).toLocaleString():'-';
+   const bestText=escapeHTML(best.ip||'-')+' / '+escapeHTML(best.route_region||best.region||'-');
+   return '<tr><td><span class="status-dot '+(online?'online':'offline')+'"></span>'+(online?'在线':'离线')+'</td><td>'+id+host+'</td><td>'+escapeHTML(a.carrier||'-')+'</td><td>'+first+'</td><td>'+seen+'</td><td>'+bestText+'</td><td>'+(a.candidate_count||0)+'</td><td><button class="danger" data-agent="'+attr(a.agent_id||'')+'" onclick="removeAgentRecord(this.dataset.agent)">清除记录</button></td></tr>';
+ }).join('');
+}
+async function removeAgentRecord(agentID){
+ if(!agentID||!confirm('清除 Agent '+agentID+' 的母鸡记录？运行中的 Agent 下次上报时会自动重新注册。')){ return; }
+ const res=await fetch('/api/agents?id='+encodeURIComponent(agentID),{method:'DELETE'}).then(r=>r.json()).catch(e=>({error:e.message}));
+ if(res.error){ settingsMsg.textContent=res.error; return; }
+ agentsCache=agentsCache.filter(a=>a.agent_id!==agentID);
+ renderAgentManagement(agentsCache);
+ renderAgents({agents:agentsCache});
+ settingsMsg.textContent=res.removed?'已清除 '+agentID+' 的记录':'未找到 '+agentID;
+}
 function renderAgents(payload){
  const list=(payload&&payload.agents)||[];
+ agentsCache=list;
+ renderAgentManagement(list);
  if(!list.length){
    agentRows.innerHTML='<tr><td colspan="8">等待 agent 上报</td></tr>';
    return;
@@ -1164,8 +1224,8 @@ function renderAgents(payload){
  agentRows.innerHTML=list.map(a=>{
    const best=a.best||{};
    const seen=a.last_seen?new Date(a.last_seen).toLocaleString():'-';
-   const id=[a.agent_id,a.hostname&&a.hostname!==a.agent_id?a.hostname:''].filter(Boolean).join(' / ');
-   return '<tr><td>'+id+'</td><td>'+(a.probe_source||'-')+'</td><td>'+(a.carrier||'-')+'</td><td>'+seen+'</td><td>'+(a.candidate_count||0)+'</td><td>'+(best.ip||'-')+'</td><td>'+(best.region||best.route_region||'-')+'</td><td>'+(Number.isFinite(best.score)?best.score.toFixed(1):'-')+'</td></tr>';
+   const id=[a.agent_id,a.hostname&&a.hostname!==a.agent_id?a.hostname:''].filter(Boolean).map(escapeHTML).join(' / ');
+   return '<tr><td>'+id+'</td><td>'+escapeHTML(a.probe_source||'-')+'</td><td>'+escapeHTML(a.carrier||'-')+'</td><td>'+seen+'</td><td>'+(a.candidate_count||0)+'</td><td>'+escapeHTML(best.ip||'-')+'</td><td>'+escapeHTML(best.region||best.route_region||'-')+'</td><td>'+(Number.isFinite(best.score)?best.score.toFixed(1):'-')+'</td></tr>';
  }).join('');
 }
 async function refresh(){
@@ -1266,6 +1326,7 @@ async function refreshLoop(){
 }
 refreshLoop();
 seedInput.addEventListener('input',()=>{ seedDirty=true; });
+document.addEventListener('keydown',event=>{ if(event.key==='Escape'){ closeSettings(); } });
 document.querySelectorAll('#regionFilters .seg').forEach(btn=>{
  btn.addEventListener('click',()=>{
    regionFilter=btn.dataset.region;

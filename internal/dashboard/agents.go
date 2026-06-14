@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -18,22 +19,34 @@ import (
 type agentRegistry struct {
 	mu     sync.RWMutex
 	agents map[string]protocol.AgentSnapshot
+	path   string
 }
 
-func newAgentRegistry() *agentRegistry {
-	return &agentRegistry{agents: map[string]protocol.AgentSnapshot{}}
+func newAgentRegistry(paths ...string) *agentRegistry {
+	r := &agentRegistry{agents: map[string]protocol.AgentSnapshot{}}
+	if len(paths) > 0 {
+		r.path = strings.TrimSpace(paths[0])
+	}
+	r.load()
+	return r
 }
 
 func (r *agentRegistry) upsert(report protocol.AgentReport) protocol.AgentSnapshot {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	result := report.Result
+	now := time.Now()
+	firstSeen := now
+	if existing, ok := r.agents[report.AgentID]; ok && !existing.FirstSeen.IsZero() {
+		firstSeen = existing.FirstSeen
+	}
 	snapshot := protocol.AgentSnapshot{
 		AgentID:     report.AgentID,
 		Hostname:    report.Hostname,
 		ProbeSource: report.ProbeSource,
 		Carrier:     report.Carrier,
-		LastSeen:    time.Now(),
+		FirstSeen:   firstSeen,
+		LastSeen:    now,
 		Result:      result,
 	}
 	if result != nil {
@@ -41,7 +54,62 @@ func (r *agentRegistry) upsert(report protocol.AgentReport) protocol.AgentSnapsh
 		snapshot.Best = result.Best
 	}
 	r.agents[report.AgentID] = snapshot
+	r.saveLocked()
 	return snapshot
+}
+
+func (r *agentRegistry) remove(agentID string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	agentID = strings.TrimSpace(agentID)
+	if _, ok := r.agents[agentID]; !ok {
+		return false
+	}
+	delete(r.agents, agentID)
+	r.saveLocked()
+	return true
+}
+
+func (r *agentRegistry) load() {
+	if r.path == "" {
+		return
+	}
+	data, err := os.ReadFile(r.path)
+	if err != nil {
+		return
+	}
+	var snapshots []protocol.AgentSnapshot
+	if json.Unmarshal(data, &snapshots) != nil {
+		return
+	}
+	for _, snapshot := range snapshots {
+		if snapshot.AgentID != "" {
+			r.agents[snapshot.AgentID] = snapshot
+		}
+	}
+}
+
+func (r *agentRegistry) saveLocked() {
+	if r.path == "" {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(r.path), 0755); err != nil {
+		log.Printf("[agents] create registry directory: %v", err)
+		return
+	}
+	snapshots := make([]protocol.AgentSnapshot, 0, len(r.agents))
+	for _, snapshot := range r.agents {
+		snapshots = append(snapshots, snapshot)
+	}
+	sort.Slice(snapshots, func(i, j int) bool { return snapshots[i].AgentID < snapshots[j].AgentID })
+	data, err := json.MarshalIndent(snapshots, "", "  ")
+	if err != nil {
+		log.Printf("[agents] encode registry: %v", err)
+		return
+	}
+	if err := os.WriteFile(r.path, append(data, '\n'), 0644); err != nil {
+		log.Printf("[agents] save registry: %v", err)
+	}
 }
 
 func (r *agentRegistry) list() []protocol.AgentSnapshot {
@@ -73,6 +141,19 @@ func (r *agentRegistry) candidatesByCarrier(carrier string, maxAge time.Duration
 }
 
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		agentID := strings.TrimSpace(r.URL.Query().Get("id"))
+		if agentID == "" {
+			writeJSON(w, map[string]string{"error": "agent id is required"})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "removed": s.agents.remove(agentID)})
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	writeJSON(w, map[string]any{"agents": s.agents.list()})
 }
 
