@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
@@ -174,14 +175,17 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleInstallScript(w http.ResponseWriter, r *http.Request) {
 	path := filepath.Join(".", "install.sh")
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		http.Error(w, "install.sh not found: "+err.Error(), http.StatusNotFound)
 		return
 	}
-	defer f.Close()
 	w.Header().Set("Content-Type", "text/x-shellscript; charset=utf-8")
-	_, _ = io.Copy(w, f)
+	_, _ = w.Write(normalizeShellScript(data))
+}
+
+func normalizeShellScript(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
 }
 
 func (s *Server) handleAgentBinary(w http.ResponseWriter, r *http.Request) {

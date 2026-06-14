@@ -120,6 +120,16 @@ func TestAgentBinaryDownload(t *testing.T) {
 	}
 }
 
+func TestNormalizeShellScriptRemovesCRLF(t *testing.T) {
+	got := normalizeShellScript([]byte("#!/usr/bin/env bash\r\nset -euo pipefail\r\n"))
+	if strings.Contains(string(got), "\r") {
+		t.Fatalf("script still contains carriage returns: %q", got)
+	}
+	if string(got) != "#!/usr/bin/env bash\nset -euo pipefail\n" {
+		t.Fatalf("unexpected normalized script: %q", got)
+	}
+}
+
 func TestAgentCandidatesAreGroupedByCarrierAndFreshness(t *testing.T) {
 	registry := newAgentRegistry()
 	registry.upsert(protocol.AgentReport{
