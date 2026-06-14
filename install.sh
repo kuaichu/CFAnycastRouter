@@ -15,7 +15,7 @@ BIN_PATH="/usr/local/bin/cf-router"
 usage() {
   cat <<'EOF'
 Usage:
-  curl -fsSL https://raw.githubusercontent.com/kuaichu/CFAnycastRouter/main/install.sh | sudo bash -s -- [options]
+  curl -fsSL http://10.0.0.234:19199/install.sh | sudo bash -s -- [options]
 
 Options:
   --server URL       Mother server URL, default: http://10.0.0.234:19199
@@ -51,34 +51,45 @@ if [[ -z "$PROBE_SOURCE" ]]; then
 fi
 
 install_packages() {
-  if command -v git >/dev/null 2>&1 && command -v go >/dev/null 2>&1; then
+  if command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1 && command -v go >/dev/null 2>&1; then
     return
   fi
   if command -v apt-get >/dev/null 2>&1; then
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y git golang-go ca-certificates
+    DEBIAN_FRONTEND=noninteractive apt-get install -y curl tar git golang-go ca-certificates
   elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y git golang ca-certificates
+    dnf install -y curl tar git golang ca-certificates
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y git golang ca-certificates
+    yum install -y curl tar git golang ca-certificates
   elif command -v apk >/dev/null 2>&1; then
-    apk add --no-cache git go ca-certificates
+    apk add --no-cache curl tar git go ca-certificates
   else
-    echo "No supported package manager found. Install git and Go first." >&2
+    echo "No supported package manager found. Install curl, tar, git, and Go first." >&2
     exit 1
   fi
 }
 
 install_packages
 
-mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$STATE_DIR"
-if [[ -d "$INSTALL_DIR/.git" ]]; then
-  git -C "$INSTALL_DIR" fetch --all --prune
-  git -C "$INSTALL_DIR" reset --hard origin/main
-else
+mkdir -p "$CONFIG_DIR" "$STATE_DIR"
+SOURCE_URL="${SERVER_URL%/}/source.tar.gz"
+tmp_source="$(mktemp -t cfar-source.XXXXXX.tar.gz)"
+if curl -fsSL "$SOURCE_URL" -o "$tmp_source"; then
+  echo "Using mother source package: $SOURCE_URL"
   rm -rf "$INSTALL_DIR"
-  git clone "$REPO_URL" "$INSTALL_DIR"
+  mkdir -p "$INSTALL_DIR"
+  tar -xzf "$tmp_source" -C "$INSTALL_DIR"
+else
+  echo "Mother source package unavailable; falling back to GitHub: $REPO_URL" >&2
+  if [[ -d "$INSTALL_DIR/.git" ]]; then
+    git -C "$INSTALL_DIR" fetch --all --prune
+    git -C "$INSTALL_DIR" reset --hard origin/main
+  else
+    rm -rf "$INSTALL_DIR"
+    git clone "$REPO_URL" "$INSTALL_DIR"
+  fi
 fi
+rm -f "$tmp_source"
 
 cd "$INSTALL_DIR"
 

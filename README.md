@@ -130,6 +130,13 @@ curl -fsSL https://raw.githubusercontent.com/kuaichu/CFAnycastRouter/main/instal
   | sudo bash -s -- --server http://10.0.0.234:19199 --id vps-hk-01 --carrier auto --token CHANGE_ME_SHARED_TOKEN
 ```
 
+母鸡启动后也会直接提供安装脚本和源码包，优先使用母鸡入口：
+
+```bash
+curl -fsSL http://10.0.0.234:19199/install.sh \
+  | sudo bash -s -- --server http://10.0.0.234:19199 --id vps-hk-01 --carrier auto
+```
+
 如果母鸡没有设置 `CFAR_AGENT_TOKEN`，agent 上报接口不强制鉴权。生产环境建议设置相同 token。
 
 ## 输出

@@ -1,12 +1,17 @@
 package dashboard
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"math"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -119,6 +124,8 @@ func (s *Server) Start() {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
+	mux.HandleFunc("/install.sh", s.handleInstallScript)
+	mux.HandleFunc("/source.tar.gz", s.handleSourceArchive)
 	mux.HandleFunc("/api/state", s.handleState)
 	mux.HandleFunc("/api/state-summary", s.handleStateSummary)
 	mux.HandleFunc("/api/last", s.handleLast)
@@ -161,6 +168,95 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = page.Execute(w, nil)
+}
+
+func (s *Server) handleInstallScript(w http.ResponseWriter, r *http.Request) {
+	path := filepath.Join(".", "install.sh")
+	f, err := os.Open(path)
+	if err != nil {
+		http.Error(w, "install.sh not found: "+err.Error(), http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "text/x-shellscript; charset=utf-8")
+	_, _ = io.Copy(w, f)
+}
+
+func (s *Server) handleSourceArchive(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", `attachment; filename="cf-anycast-router-source.tar.gz"`)
+	gz := gzip.NewWriter(w)
+	defer gz.Close()
+	tw := tar.NewWriter(gz)
+	defer tw.Close()
+	root, err := filepath.Abs(".")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	err = filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil || rel == "." {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if skipArchivePath(rel, d.IsDir()) {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		hdr, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		hdr.Name = rel
+		if err := tw.WriteHeader(hdr); err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		_, err = io.Copy(tw, f)
+		return err
+	})
+	if err != nil {
+		log.Printf("[dashboard] source archive failed: %v", err)
+	}
+}
+
+func skipArchivePath(rel string, isDir bool) bool {
+	first := rel
+	if idx := strings.IndexByte(rel, '/'); idx >= 0 {
+		first = rel[:idx]
+	}
+	switch first {
+	case ".git", "data", "out":
+		return true
+	}
+	base := filepath.Base(rel)
+	if strings.HasSuffix(base, ".log") || strings.HasSuffix(base, ".err") || strings.HasSuffix(base, ".pid") {
+		return true
+	}
+	if base == "cf-router" || strings.HasPrefix(base, "cf-router") || strings.HasSuffix(base, ".exe") || strings.HasSuffix(base, ".dll") || strings.HasSuffix(base, ".sys") {
+		return true
+	}
+	if isDir && (base == "tmp" || base == "node_modules") {
+		return true
+	}
+	return false
 }
 
 func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
@@ -934,7 +1030,7 @@ function updateAgentInstallCommand(){
  const carrier=(agentInstallCarrier.value||'auto').trim();
  const token=(agentInstallToken.value||'').trim();
  const parts=[
-   'curl -fsSL https://raw.githubusercontent.com/kuaichu/CFAnycastRouter/main/install.sh',
+   'curl -fsSL '+shellQuote(server+'/install.sh'),
    '| sudo bash -s --',
    '--server '+shellQuote(server),
    '--id '+shellQuote(id),
