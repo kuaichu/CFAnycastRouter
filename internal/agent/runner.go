@@ -66,6 +66,15 @@ func (r *Runner) runOnce(ctx context.Context, agentID string) error {
 		return err
 	}
 	r.applyAssignment(assignment)
+	if err := r.postReport(ctx, protocol.AgentReport{
+		AgentID:     agentID,
+		Hostname:    hostname(),
+		ProbeSource: r.cfg.ProbeSource,
+		Carrier:     r.cfg.Carrier,
+		Time:        time.Now(),
+	}); err != nil {
+		return fmt.Errorf("register agent: %w", err)
+	}
 	if len(r.cfg.SeedIPs) == 0 && len(r.cfg.SeedCIDRs) == 0 {
 		return fmt.Errorf("server returned no seed targets")
 	}
@@ -138,7 +147,11 @@ func (r *Runner) postReport(ctx context.Context, report protocol.AgentReport) er
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("report failed: %s", resp.Status)
 	}
-	log.Printf("[agent] reported %d candidates", len(report.Result.Candidates))
+	if report.Result == nil {
+		log.Printf("[agent] registered")
+	} else {
+		log.Printf("[agent] reported %d candidates", len(report.Result.Candidates))
+	}
 	return nil
 }
 

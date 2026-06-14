@@ -177,3 +177,21 @@ func TestAgentRegistryPersistsAndRemovesSnapshots(t *testing.T) {
 		t.Fatalf("removed agent returned after reload: %#v", got)
 	}
 }
+
+func TestAgentHeartbeatPreservesLastMeasurement(t *testing.T) {
+	registry := newAgentRegistry()
+	registry.upsert(protocol.AgentReport{
+		AgentID: "cu-01",
+		Carrier: "cu",
+		Result: &router.CycleResult{
+			Candidates: []router.Candidate{{IP: "104.20.1.1"}},
+			Best:       &router.Candidate{IP: "104.20.1.1"},
+		},
+	})
+	registry.upsert(protocol.AgentReport{AgentID: "cu-01", Carrier: "cu"})
+
+	got := registry.list()
+	if len(got) != 1 || got[0].Result == nil || got[0].CandidateCount != 1 || got[0].Best == nil {
+		t.Fatalf("heartbeat discarded measurement: %#v", got)
+	}
+}

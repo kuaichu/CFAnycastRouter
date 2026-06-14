@@ -37,8 +37,12 @@ func (r *agentRegistry) upsert(report protocol.AgentReport) protocol.AgentSnapsh
 	result := report.Result
 	now := time.Now()
 	firstSeen := now
-	if existing, ok := r.agents[report.AgentID]; ok && !existing.FirstSeen.IsZero() {
+	existing, exists := r.agents[report.AgentID]
+	if exists && !existing.FirstSeen.IsZero() {
 		firstSeen = existing.FirstSeen
+	}
+	if result == nil && exists {
+		result = existing.Result
 	}
 	snapshot := protocol.AgentSnapshot{
 		AgentID:     report.AgentID,
@@ -52,6 +56,9 @@ func (r *agentRegistry) upsert(report protocol.AgentReport) protocol.AgentSnapsh
 	if result != nil {
 		snapshot.CandidateCount = len(result.Candidates)
 		snapshot.Best = result.Best
+	} else if exists {
+		snapshot.CandidateCount = existing.CandidateCount
+		snapshot.Best = existing.Best
 	}
 	r.agents[report.AgentID] = snapshot
 	r.saveLocked()
