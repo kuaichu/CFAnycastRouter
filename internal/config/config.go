@@ -102,6 +102,7 @@ type CloudflareDNSConfig struct {
 
 type DNSRecordConfig struct {
 	Enabled bool   `yaml:"enabled" json:"enabled"`
+	Carrier string `yaml:"carrier" json:"carrier"`
 	Region  string `yaml:"region" json:"region"`
 	Type    string `yaml:"type" json:"type"`
 	Domain  string `yaml:"domain" json:"domain"`
@@ -338,6 +339,11 @@ func (c *Config) normalize() error {
 	}
 	for i := range c.CloudflareDNS.RecordSets {
 		record := &c.CloudflareDNS.RecordSets[i]
+		rawCarrier := strings.TrimSpace(record.Carrier)
+		record.Carrier = NormalizeCarrier(record.Carrier)
+		if rawCarrier == "" || record.Carrier == "auto" {
+			record.Carrier = c.Carrier
+		}
 		record.Region = NormalizePOP(record.Region)
 		record.Type = strings.ToUpper(strings.TrimSpace(record.Type))
 		if record.Type == "" {
@@ -347,8 +353,8 @@ func (c *Config) normalize() error {
 			return fmt.Errorf("cloudflare_dns.record_sets[%d].type must be A or AAAA", i)
 		}
 		record.Domain = strings.TrimSpace(strings.TrimSuffix(record.Domain, "."))
-		if record.Region == "" || record.Domain == "" {
-			return fmt.Errorf("cloudflare_dns.record_sets[%d] requires region and domain", i)
+		if record.Carrier == "" || record.Region == "" || record.Domain == "" {
+			return fmt.Errorf("cloudflare_dns.record_sets[%d] requires carrier, region and domain", i)
 		}
 	}
 	if len(c.CloudflareDNS.RecordSets) == 0 && len(c.CloudflareDNS.Records) > 0 {
@@ -360,6 +366,7 @@ func (c *Config) normalize() error {
 		for _, region := range keys {
 			c.CloudflareDNS.RecordSets = append(c.CloudflareDNS.RecordSets, DNSRecordConfig{
 				Enabled: true,
+				Carrier: c.Carrier,
 				Region:  region,
 				Type:    "A",
 				Domain:  c.CloudflareDNS.Records[region],
@@ -519,7 +526,18 @@ func (c CloudflareDNSConfig) RegionRecords() []DNSRecordConfig {
 	}
 	sort.Strings(keys)
 	for _, region := range keys {
-		out = append(out, DNSRecordConfig{Enabled: true, Region: NormalizePOP(region), Type: "A", Domain: c.Records[region]})
+		out = append(out, DNSRecordConfig{Enabled: true, Carrier: "unknown", Region: NormalizePOP(region), Type: "A", Domain: c.Records[region]})
+	}
+	return out
+}
+
+func (c CloudflareDNSConfig) CarrierRegionRecords(carrier string) []DNSRecordConfig {
+	carrier = NormalizeCarrier(carrier)
+	out := make([]DNSRecordConfig, 0, len(c.RecordSets))
+	for _, record := range c.RegionRecords() {
+		if NormalizeCarrier(record.Carrier) == carrier {
+			out = append(out, record)
+		}
 	}
 	return out
 }
@@ -762,6 +780,7 @@ func upsertCloudflareDNS(mapping *yaml.Node, cfg CloudflareDNSConfig) {
 	for _, record := range cfg.RecordSets {
 		item := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 		addMapScalar(item, "enabled", fmt.Sprintf("%t", record.Enabled), "!!bool")
+		addMapScalar(item, "carrier", record.Carrier, "!!str")
 		addMapScalar(item, "region", record.Region, "!!str")
 		addMapScalar(item, "type", record.Type, "!!str")
 		addMapScalar(item, "domain", record.Domain, "!!str")

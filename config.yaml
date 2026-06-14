@@ -52,13 +52,15 @@ cloudflare_dns:
   proxied: false
   record_sets:
     - enabled: true
+      carrier: cu
       region: HK
       type: A
-      domain: cf-hk.ziher.eu.org
+      domain: cu-cf-hk.ziher.eu.org
     - enabled: true
+      carrier: cu
       region: US
       type: A
-      domain: cf-us.ziher.eu.org
+      domain: cu-cf-us.ziher.eu.org
 speed_test:
   enabled: true
   host: speed.cloudflare.com

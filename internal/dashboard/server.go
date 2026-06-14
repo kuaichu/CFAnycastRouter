@@ -45,6 +45,7 @@ type Server struct {
 	agentTokenEnv string
 	agents        *agentRegistry
 	mu            sync.RWMutex
+	dnsMu         sync.Mutex
 	last          *router.CycleResult
 	scanning      bool
 	server        *http.Server
@@ -635,7 +636,7 @@ button.ghost{background:transparent}button.danger{background:#3a151a;border-colo
 .field input,.field select{width:100%;box-sizing:border-box;background:#071018;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font:14px ui-monospace,SFMono-Regular,Consolas,monospace}
 .field input:focus,.field select:focus{outline:none;border-color:#18c99b;box-shadow:0 0 0 3px rgba(24,201,155,.14)}
 .check-row{display:flex;gap:8px;align-items:center;color:#c7d5e8;margin:10px 0}.check-row input{width:auto}
-.record-list{display:grid;gap:10px;margin-top:10px}.record-row{display:grid;grid-template-columns:72px 88px 1fr 80px 40px;gap:8px;align-items:center}
+.record-list{display:grid;gap:10px;margin-top:10px}.record-row{display:grid;grid-template-columns:80px 72px 72px 1fr 80px 40px;gap:8px;align-items:center}
 .record-row input,.record-row select{background:#071018;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px}
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}
 .icon-btn{width:36px;height:36px;padding:0;display:grid;place-items:center}
@@ -713,7 +714,7 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <div class="field"><label>TTL</label><input id="setTTL" type="number" min="60" step="60"></div>
 </div>
 <label class="check-row"><input id="setProxied" type="checkbox"> 开启 Cloudflare 代理（当前建议关闭）</label>
-<div class="field"><label>按地区解析域名</label><div id="recordList" class="record-list"></div></div>
+<div class="field"><label>按运营商和地区解析域名</label><div id="recordList" class="record-list"></div></div>
 <button onclick="addRecordRow()">添加地区记录</button>
 <div class="small">记录类型已支持 A / AAAA；当前扫描器主要产出 IPv4，IPv6 候选接入后可直接添加 AAAA 记录。</div>
 </section>
@@ -734,7 +735,7 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 </div>
 <div class="section-title">最终区</div>
 <section class="final-grid">
-<div class="panel"><div class="k">DNS 解析最终区</div><div class="small">只按本地路由地区 route_region 选择，用于 cf-hk / cf-us 这类解析。</div>
+<div class="panel"><div class="k">DNS 解析最终区</div><div class="small">按 Agent 运营商和本地路由地区 route_region 选择，用于 cu-cf-hk / cu-cf-us 这类解析。</div>
 <table class="final-table"><thead><tr><th class="col-region">地区</th><th class="col-ip">最终 IP</th><th class="col-domain">解析域名</th><th class="col-ping">Ping</th><th class="col-hint">路由依据</th></tr></thead><tbody id="routeFinalRows"><tr><td colspan="5">等待扫描数据</td></tr></tbody></table>
 </div>
 <div class="panel"><div class="k">CF 官方测速最终区</div><div class="small">按 Cloudflare 官方 __down 下载结果选择，用于观察服务面下载表现。</div>
@@ -896,17 +897,17 @@ function routeDnsScore(c){
  const rtt=c.ping_rtt_ms>0?c.ping_rtt_ms:(c.avg_rtt_ms>0?c.avg_rtt_ms:9999);
  return rtt+(c.ping_loss_rate||0)*800+(c.loss_rate||0)*300+(c.spike_rate||0)*80;
 }
-function domainForRegion(settings,region){
+function domainForRegion(settings,carrier,region){
  const dns=settings?.cloudflare_dns||{};
- const records=(dns.record_sets&&dns.record_sets.length)?dns.record_sets:Object.entries(dns.records||{}).map(([r,domain])=>({enabled:true,region:r,type:'A',domain}));
- const rec=records.find(r=>r.enabled!==false&&String(r.type||'A').toUpperCase()==='A'&&String(r.region||'').toUpperCase()===region);
+ const records=(dns.record_sets&&dns.record_sets.length)?dns.record_sets:Object.entries(dns.records||{}).map(([r,domain])=>({enabled:true,carrier,region:r,type:'A',domain}));
+ const rec=records.find(r=>r.enabled!==false&&String(r.carrier||settings?.carrier||'unknown').toLowerCase()===carrier&&String(r.type||'A').toUpperCase()==='A'&&String(r.region||'').toUpperCase()===region);
  return rec?.domain||'-';
 }
-function finalRegions(settings,candidates,field){
+function finalRegions(settings,candidates,field,carrier){
  const set=new Set(['HK','US','JP','SG']);
  const dns=settings?.cloudflare_dns||{};
  const records=(dns.record_sets&&dns.record_sets.length)?dns.record_sets:[];
- records.forEach(r=>{ if(r.region){ set.add(String(r.region).toUpperCase()); } });
+ records.forEach(r=>{ if(String(r.carrier||settings?.carrier||'unknown').toLowerCase()===carrier&&r.region){ set.add(String(r.region).toUpperCase()); } });
  (candidates||[]).forEach(c=>{ const v=String(c[field]||'').toUpperCase(); if(v&&v!=='UNKNOWN'&&v!=='-'){ set.add(v); } });
  return [...set].sort((a,b)=>{
    const order={HK:1,US:2,JP:3,SG:4,EU:5};
@@ -931,15 +932,16 @@ function bestSpeedForRegion(candidates,region){
  }
  return best;
 }
-function renderFinalAreas(candidates,settings){
- const routeRows=finalRegions(settings,candidates,'route_region').map(region=>{
+function renderFinalAreas(candidates,settings,carrier){
+ carrier=String(carrier||settings?.carrier||'unknown').toLowerCase();
+ const routeRows=finalRegions(settings,candidates,'route_region',carrier).map(region=>{
    const c=bestRouteForRegion(candidates,region);
-   if(!c){ return '<tr><td>'+region+'</td><td>-</td><td>'+domainForRegion(settings,region)+'</td><td>-</td><td>暂无 '+region+' 路由候选</td></tr>'; }
+   if(!c){ return '<tr><td>'+region+'</td><td>-</td><td>'+domainForRegion(settings,carrier,region)+'</td><td>-</td><td>暂无 '+carrier.toUpperCase()+' '+region+' 路由候选</td></tr>'; }
    const hint=[c.route_hint_ip,c.route_city,c.route_isp].filter(Boolean).join(' ')||'-';
-   return '<tr><td>'+region+'</td><td>'+c.ip+'</td><td>'+domainForRegion(settings,region)+'</td><td>'+fmt(c.ping_rtt_ms||0)+'</td><td>'+hint+'</td></tr>';
+   return '<tr><td>'+region+'</td><td>'+c.ip+'</td><td>'+domainForRegion(settings,carrier,region)+'</td><td>'+fmt(c.ping_rtt_ms||0)+'</td><td>'+hint+'</td></tr>';
  }).join('');
  routeFinalRows.innerHTML=routeRows||'<tr><td colspan="5">等待扫描数据</td></tr>';
- const speedRows=finalRegions(settings,candidates,'route_region').map(region=>{
+ const speedRows=finalRegions(settings,candidates,'route_region',carrier).map(region=>{
    const c=bestSpeedForRegion(candidates,region);
    if(!c){ return '<tr><td>'+region+'</td><td>-</td><td>speed.cloudflare.com</td><td>-</td><td>暂无官方测速结果</td></tr>'; }
    return '<tr><td>'+region+'</td><td>'+c.ip+'</td><td>__down</td><td>'+fmt(c.cf_speed_rtt_ms||0)+'</td><td>'+fmt(c.cf_speed_mbps||0)+'</td></tr>';
@@ -1084,11 +1086,11 @@ function fillSettings(s){
  setTTL.value=dns.ttl||60;
  setProxied.checked=Boolean(dns.proxied);
  recordList.innerHTML='';
- const records=(dns.record_sets&&dns.record_sets.length)?dns.record_sets:Object.entries(dns.records||{}).map(([region,domain])=>({enabled:true,region,type:'A',domain}));
+ const records=(dns.record_sets&&dns.record_sets.length)?dns.record_sets:Object.entries(dns.records||{}).map(([region,domain])=>({enabled:true,carrier:s.carrier||'unknown',region,type:'A',domain}));
  for(const record of records){ addRecordRow(record); }
  if(recordList.children.length===0){
-   addRecordRow({enabled:true,region:'HK',type:'A',domain:'cf-hk.ziher.eu.org'});
-   addRecordRow({enabled:true,region:'US',type:'A',domain:'cf-us.ziher.eu.org'});
+   addRecordRow({enabled:true,carrier:'cu',region:'HK',type:'A',domain:'cu-cf-hk.ziher.eu.org'});
+   addRecordRow({enabled:true,carrier:'cu',region:'US',type:'A',domain:'cu-cf-us.ziher.eu.org'});
  }
  const speed=s.speed_test||{};
  setSpeedEnabled.checked=speed.enabled!==false;
@@ -1102,8 +1104,9 @@ function fillSettings(s){
 function addRecordRow(record={}){
  const row=document.createElement('div');
  row.className='record-row';
- row.innerHTML="<select class=\"rec-region\"><option>HK</option><option>US</option><option>JP</option><option>SG</option><option>EU</option><option>CN</option></select><select class=\"rec-type\"><option>A</option><option>AAAA</option></select><input class=\"rec-domain\" placeholder=\"cf-hk.example.com\"><label class=\"check-row\"><input class=\"rec-enabled\" type=\"checkbox\">启用</label><button class=\"icon-btn\" type=\"button\" onclick=\"this.closest('.record-row').remove()\">×</button>";
+ row.innerHTML="<select class=\"rec-carrier\"><option value=\"cu\">联通</option><option value=\"ct\">电信</option><option value=\"cm\">移动</option><option value=\"unknown\">未知</option></select><select class=\"rec-region\"><option>HK</option><option>US</option><option>JP</option><option>SG</option><option>EU</option><option>CN</option></select><select class=\"rec-type\"><option>A</option><option>AAAA</option></select><input class=\"rec-domain\" placeholder=\"cu-cf-us.example.com\"><label class=\"check-row\"><input class=\"rec-enabled\" type=\"checkbox\">启用</label><button class=\"icon-btn\" type=\"button\" onclick=\"this.closest('.record-row').remove()\">×</button>";
  recordList.appendChild(row);
+ row.querySelector('.rec-carrier').value=(record.carrier||setCarrier.value||'unknown').toLowerCase();
  row.querySelector('.rec-region').value=(record.region||'HK').toUpperCase();
  row.querySelector('.rec-type').value=(record.type||'A').toUpperCase();
  row.querySelector('.rec-domain').value=record.domain||'';
@@ -1112,6 +1115,7 @@ function addRecordRow(record={}){
 function collectSettings(){
  const records=[...recordList.querySelectorAll('.record-row')].map(row=>({
    enabled:row.querySelector('.rec-enabled').checked,
+   carrier:row.querySelector('.rec-carrier').value.trim().toLowerCase(),
    region:row.querySelector('.rec-region').value.trim().toUpperCase(),
    type:row.querySelector('.rec-type').value.trim().toUpperCase(),
    domain:row.querySelector('.rec-domain').value.trim()
@@ -1180,7 +1184,7 @@ if(last&&last.candidates){
    best.textContent=last.best?.ip||'-';
    pop.textContent=last.best?.region||last.best?.route_region||'-';
    decision.textContent=decisionLabel(last.decision);
-   renderFinalAreas(last.candidates||[],settingsCache);
+   renderFinalAreas(last.candidates||[],settingsCache,last.carrier);
    filterSummary(last.candidates||[]);
    rows.innerHTML=sortCandidates(last.candidates||[]).map(c=>candidateRow(c,last)).join('');
    sortRenderedRows();
@@ -1191,7 +1195,7 @@ if(last&&last.candidates){
  best.textContent='-';
  pop.textContent='-';
  decision.textContent=decisionLabel(state?.last_decision)||'等待首次探测';
- renderFinalAreas([],settingsCache);
+ renderFinalAreas([],settingsCache,settingsCache?.carrier);
  if(!fullStateCache){
    fullStateCache=await fetch('/api/state?full=1&ts='+Date.now()).then(r=>r.json()).catch(()=>null);
  }

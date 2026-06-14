@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"cf-anycast-router/internal/history"
+	"cf-anycast-router/internal/protocol"
 	"cf-anycast-router/internal/router"
 )
 
@@ -115,5 +117,35 @@ func TestAgentBinaryDownload(t *testing.T) {
 	s.handleAgentBinary(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("invalid download status=%d want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestAgentCandidatesAreGroupedByCarrierAndFreshness(t *testing.T) {
+	registry := newAgentRegistry()
+	registry.upsert(protocol.AgentReport{
+		AgentID: "cu-01",
+		Carrier: "cu",
+		Result:  &router.CycleResult{Candidates: []router.Candidate{{IP: "104.20.1.1", Carrier: "cu"}}},
+	})
+	registry.upsert(protocol.AgentReport{
+		AgentID: "ct-01",
+		Carrier: "ct",
+		Result:  &router.CycleResult{Candidates: []router.Candidate{{IP: "104.20.2.2", Carrier: "ct"}}},
+	})
+	stale := registry.agents["cu-01"]
+	stale.LastSeen = time.Now().Add(-time.Hour)
+	registry.agents["cu-01"] = stale
+
+	if got := registry.candidatesByCarrier("cu", 15*time.Minute); len(got) != 0 {
+		t.Fatalf("stale CU candidates were included: %#v", got)
+	}
+	registry.upsert(protocol.AgentReport{
+		AgentID: "cu-02",
+		Carrier: "cu",
+		Result:  &router.CycleResult{Candidates: []router.Candidate{{IP: "104.20.3.3", Carrier: "cu"}}},
+	})
+	got := registry.candidatesByCarrier("cu", 15*time.Minute)
+	if len(got) != 1 || got[0].IP != "104.20.3.3" {
+		t.Fatalf("unexpected CU candidates: %#v", got)
 	}
 }

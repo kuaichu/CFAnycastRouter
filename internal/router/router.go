@@ -187,29 +187,34 @@ func (r *Router) Cycle() (*CycleResult, error) {
 }
 
 func (r *Router) updateRegionalDNS(candidates []Candidate) []string {
-	if !r.cfg.CloudflareDNS.Enabled {
+	return UpdateRegionalDNS(r.cfg, r.cfg.Carrier, candidates)
+}
+
+func UpdateRegionalDNS(cfg *config.Config, carrier string, candidates []Candidate) []string {
+	if cfg == nil || !cfg.CloudflareDNS.Enabled {
 		return nil
 	}
-	client, err := cloudflaredns.New(r.cfg.CloudflareDNS)
+	carrier = config.NormalizeCarrier(carrier)
+	client, err := cloudflaredns.New(cfg.CloudflareDNS)
 	if err != nil {
 		return []string{"cloudflare_dns error: " + err.Error()}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	records := r.cfg.CloudflareDNS.RegionRecords()
+	records := cfg.CloudflareDNS.CarrierRegionRecords(carrier)
 	out := make([]string, 0, len(records))
 	for _, record := range records {
 		best := firstHealthyInRouteRegionForType(candidates, record.Region, record.Type)
 		if best == nil {
-			out = append(out, fmt.Sprintf("cloudflare_dns %s %s %s skipped: no healthy candidate", record.Region, record.Type, record.Domain))
+			out = append(out, fmt.Sprintf("cloudflare_dns %s %s %s %s skipped: no healthy candidate", carrier, record.Region, record.Type, record.Domain))
 			continue
 		}
 		update, err := client.UpsertRecord(ctx, record.Region, record.Type, record.Domain, best.IP)
 		if err != nil {
-			out = append(out, fmt.Sprintf("cloudflare_dns %s %s %s error: %v", record.Region, record.Type, record.Domain, err))
+			out = append(out, fmt.Sprintf("cloudflare_dns %s %s %s %s error: %v", carrier, record.Region, record.Type, record.Domain, err))
 			continue
 		}
-		out = append(out, fmt.Sprintf("cloudflare_dns %s %s %s -> %s %s", update.Region, update.Type, update.Domain, update.IP, update.Action))
+		out = append(out, fmt.Sprintf("cloudflare_dns %s %s %s %s -> %s %s", carrier, update.Region, update.Type, update.Domain, update.IP, update.Action))
 	}
 	return out
 }
