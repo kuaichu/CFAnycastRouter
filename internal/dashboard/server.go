@@ -1049,8 +1049,9 @@ function updateAgentInstallCommand(){
  const id=(agentInstallID.value||'vps-01').trim();
  const carrier=(agentInstallCarrier.value||'auto').trim();
  const token=(agentInstallToken.value||'').trim();
+ const fallbackInstall='https://raw.githubusercontent.com/kuaichu/CFAnycastRouter/main/install.sh';
  const parts=[
-   'curl -fsSL '+shellQuote(server+'/install.sh'),
+   '(curl -fsSL '+shellQuote(server+'/install.sh')+' || curl -fsSL '+shellQuote(fallbackInstall)+')',
    '| sudo bash -s --',
    '--server '+shellQuote(server),
    '--id '+shellQuote(id),
