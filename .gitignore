@@ -1,0 +1,14 @@
+data/
+out/
+cf-router
+cf-router.exe
+cf-router-*.exe
+cf-router-*
+ntr_*.exe
+WinDivert*.dll
+WinDivert*.sys
+*.dll
+*.sys
+*.exe
+*.log
+*.err

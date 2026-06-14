@@ -1,0 +1,719 @@
+package routegeo
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"os/exec"
+	"regexp"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+type Result struct {
+	IP         string   `json:"ip"`
+	Hops       []string `json:"hops"`
+	Region     string   `json:"region"`
+	Country    string   `json:"country"`
+	City       string   `json:"city"`
+	ISP        string   `json:"isp"`
+	ASN        string   `json:"asn"`
+	HintIP     string   `json:"hint_ip"`
+	Confidence float64  `json:"confidence"`
+	Error      string   `json:"error,omitempty"`
+	Raw        string   `json:"raw,omitempty"`
+}
+
+type TraceOptions struct {
+	Command string
+	Args    []string
+}
+
+type geoInfo struct {
+	Status      string `json:"status"`
+	Query       string `json:"query"`
+	Country     string `json:"country"`
+	CountryCode string `json:"countryCode"`
+	RegionName  string `json:"regionName"`
+	City        string `json:"city"`
+	ISP         string `json:"isp"`
+	AS          string `json:"as"`
+}
+
+var ipv4Pattern = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
+var ntrRawHopPattern = regexp.MustCompile(`^\s*(\d+)\|((?:\d{1,3}\.){3}\d{1,3})\|`)
+var asnPattern = regexp.MustCompile(`\bAS\d+\b`)
+
+var geoLookupSem = make(chan struct{}, 2)
+var ptrLookupSem = make(chan struct{}, 8)
+var geoCache = struct {
+	sync.RWMutex
+	items map[string]geoInfo
+}{items: map[string]geoInfo{}}
+
+func Trace(ip string, timeout time.Duration) Result {
+	return TraceWithOptions(ip, timeout, TraceOptions{})
+}
+
+func TraceWithOptions(ip string, timeout time.Duration, opts TraceOptions) Result {
+	out := Result{IP: strings.TrimSpace(ip)}
+	if net.ParseIP(out.IP).To4() == nil {
+		out.Error = "invalid IPv4"
+		return out
+	}
+	if timeout <= 0 {
+		timeout = 8 * time.Second
+	}
+	raw, err := runTrace(out.IP, timeout, opts)
+	out.Raw = raw
+	if err != nil {
+		out.Error = err.Error()
+	}
+	out.Hops = parseHops(raw)
+	if len(out.Hops) == 0 {
+		if out.Error == "" {
+			out.Error = "no route hops parsed"
+		}
+		return out
+	}
+	infos := parseEmbeddedGeoInfos(raw)
+	for ip, info := range lookupGeo(out.Hops, timeout, infos) {
+		infos[ip] = info
+	}
+	pick := pickRouteHint(out.IP, out.Hops, infos)
+	if pick == nil || shouldTryEmbeddedFallback(*pick) {
+		if fallback := traceEmbeddedGeoFallback(out.IP, timeout, opts); fallback != nil {
+			fallbackPick := pickRouteHint(out.IP, fallback.hops, fallback.infos)
+			if shouldUseEmbeddedFallback(out.IP, out.Hops, pick, fallback.hops, fallbackPick) {
+				out.Hops = fallback.hops
+				infos = fallback.infos
+				pick = fallbackPick
+			}
+		}
+	}
+	if pick == nil {
+		if out.Error == "" {
+			out.Error = "no geocoded public hop"
+		}
+		return out
+	}
+	out.HintIP = pick.Query
+	out.Country = pick.Country
+	out.City = pick.City
+	out.ISP = pick.ISP
+	out.ASN = pick.AS
+	out.Region = regionFromGeo(*pick)
+	out.Confidence = confidenceFor(out.IP, out.HintIP, out.Hops, *pick)
+	return out
+}
+
+type embeddedGeoTrace struct {
+	hops  []string
+	infos map[string]geoInfo
+}
+
+func traceEmbeddedGeoFallback(ip string, timeout time.Duration, opts TraceOptions) *embeddedGeoTrace {
+	args, ok := ntrReportArgs(opts.Args)
+	if !ok || strings.TrimSpace(opts.Command) == "" {
+		return nil
+	}
+	raw, err := runTrace(ip, timeout, TraceOptions{Command: opts.Command, Args: args})
+	if err != nil && raw == "" {
+		return nil
+	}
+	hops := parseHops(raw)
+	infos := parseEmbeddedGeoInfos(raw)
+	for _, hop := range hops {
+		if _, ok := infos[hop]; ok {
+			continue
+		}
+		if info, ok := staticRouteGeo(hop); ok {
+			infos[hop] = info
+		}
+	}
+	if len(hops) == 0 || len(infos) == 0 {
+		return nil
+	}
+	return &embeddedGeoTrace{hops: hops, infos: infos}
+}
+
+func runTrace(ip string, timeout time.Duration, opts TraceOptions) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := traceCommand(ctx, ip, opts)
+	data, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return string(data), fmt.Errorf("route trace timed out")
+	}
+	if err != nil && len(data) == 0 {
+		return "", err
+	}
+	return string(data), nil
+}
+
+func traceCommand(ctx context.Context, ip string, opts TraceOptions) *exec.Cmd {
+	if strings.TrimSpace(opts.Command) != "" {
+		args := replaceIPArg(opts.Args, ip)
+		if len(args) == 0 {
+			args = []string{ip}
+		}
+		return exec.CommandContext(ctx, opts.Command, args...)
+	}
+	for _, name := range []string{"nexttrace", "nxtrace"} {
+		if path, err := exec.LookPath(name); err == nil {
+			return exec.CommandContext(ctx, path, "-n", "-m", "18", ip)
+		}
+	}
+	if _, err := exec.LookPath("mtr"); err == nil && runtime.GOOS != "windows" {
+		return exec.CommandContext(ctx, "mtr", "-n", "-r", "-c", "1", "-m", "18", ip)
+	}
+	if runtime.GOOS != "windows" {
+		if _, err := exec.LookPath("traceroute"); err == nil {
+			return exec.CommandContext(ctx, "traceroute", "-n", "-m", "18", "-w", "1", "-q", "1", ip)
+		}
+		return exec.CommandContext(ctx, "tracepath", "-n", "-m", "18", ip)
+	}
+	return exec.CommandContext(ctx, "tracert", "-d", "-h", "18", "-w", "700", ip)
+}
+
+func replaceIPArg(args []string, ip string) []string {
+	out := make([]string, 0, len(args)+1)
+	replaced := false
+	for _, arg := range args {
+		if strings.Contains(arg, "{ip}") {
+			replaced = true
+			out = append(out, strings.ReplaceAll(arg, "{ip}", ip))
+			continue
+		}
+		out = append(out, arg)
+	}
+	if !replaced && len(out) > 0 {
+		out = append(out, ip)
+	}
+	return out
+}
+
+func ntrReportArgs(args []string) ([]string, bool) {
+	hasRaw := false
+	hasReport := false
+	hasWide := false
+	hasShowIPs := false
+	hasNoColor := false
+	hasLanguage := false
+	out := make([]string, 0, len(args)+6)
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "--raw":
+			hasRaw = true
+			continue
+		case "--report", "-r":
+			hasReport = true
+		case "--wide", "-w":
+			hasWide = true
+		case "--show-ips":
+			hasShowIPs = true
+		case "-C", "--no-color":
+			hasNoColor = true
+		case "-g", "--language":
+			hasLanguage = true
+		case "-d", "--data-provider":
+			out = append(out, arg)
+			if i+1 < len(args) {
+				i++
+				out = append(out, args[i])
+			}
+			continue
+		case "-q", "--queries":
+			out = append(out, arg)
+			if i+1 < len(args) {
+				i++
+				out = append(out, maxNumericArg(args[i], 3))
+			}
+			continue
+		}
+		out = append(out, arg)
+	}
+	if !hasRaw {
+		return nil, false
+	}
+	if !hasNoColor {
+		out = append([]string{"-C"}, out...)
+	}
+	if !hasLanguage {
+		out = append([]string{"-g", "cn"}, out...)
+	}
+	if !hasReport {
+		out = append(out, "--report")
+	}
+	if !hasWide {
+		out = append(out, "--wide")
+	}
+	if !hasShowIPs {
+		out = append(out, "--show-ips")
+	}
+	return out, true
+}
+
+func maxNumericArg(value string, min int) string {
+	n, err := strconv.Atoi(value)
+	if err != nil || n >= min {
+		return value
+	}
+	return strconv.Itoa(min)
+}
+
+func parseHops(raw string) []string {
+	if hops := parseNTRRawHops(raw); len(hops) > 0 {
+		return hops
+	}
+	seen := map[string]bool{}
+	var hops []string
+	for _, match := range ipv4Pattern.FindAllString(raw, -1) {
+		ip := net.ParseIP(match).To4()
+		if ip == nil || seen[match] {
+			continue
+		}
+		seen[match] = true
+		hops = append(hops, match)
+	}
+	return hops
+}
+
+func parseNTRRawHops(raw string) []string {
+	byHop := map[int]string{}
+	for _, line := range strings.Split(raw, "\n") {
+		match := ntrRawHopPattern.FindStringSubmatch(strings.TrimSpace(line))
+		if len(match) != 3 {
+			continue
+		}
+		hop, err := strconv.Atoi(match[1])
+		if err != nil {
+			continue
+		}
+		ip := net.ParseIP(match[2]).To4()
+		if ip == nil {
+			continue
+		}
+		byHop[hop] = match[2]
+	}
+	if len(byHop) == 0 {
+		return nil
+	}
+	keys := make([]int, 0, len(byHop))
+	for hop := range byHop {
+		keys = append(keys, hop)
+	}
+	sort.Ints(keys)
+	seen := map[string]bool{}
+	out := make([]string, 0, len(keys))
+	for _, hop := range keys {
+		ip := byHop[hop]
+		if seen[ip] {
+			continue
+		}
+		seen[ip] = true
+		out = append(out, ip)
+	}
+	return out
+}
+
+func lookupGeo(ips []string, timeout time.Duration, known map[string]geoInfo) map[string]geoInfo {
+	out := map[string]geoInfo{}
+	var missing []string
+	seen := map[string]bool{}
+	for _, ip := range ips {
+		if !isPublicIPv4(ip) || seen[ip] {
+			continue
+		}
+		seen[ip] = true
+		if info, ok := known[ip]; ok && regionFromGeo(info) != "unknown" {
+			out[ip] = info
+			continue
+		}
+		if info, ok := staticRouteGeo(ip); ok {
+			out[ip] = info
+			continue
+		}
+		if info, ok := reverseRouteGeo(ip, timeout); ok {
+			out[ip] = info
+			continue
+		}
+		geoCache.RLock()
+		info, ok := geoCache.items[ip]
+		geoCache.RUnlock()
+		if ok {
+			out[ip] = info
+			continue
+		}
+		missing = append(missing, ip)
+	}
+	if len(missing) == 0 {
+		return out
+	}
+	geoLookupSem <- struct{}{}
+	defer func() { <-geoLookupSem }()
+	body, _ := json.Marshal(missing)
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Post("http://ip-api.com/batch?fields=status,query,country,countryCode,regionName,city,isp,as", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return out
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return out
+	}
+	var infos []geoInfo
+	if err := json.NewDecoder(resp.Body).Decode(&infos); err != nil {
+		return out
+	}
+	cacheUpdates := map[string]geoInfo{}
+	for _, info := range infos {
+		if info.Status == "success" && info.Query != "" {
+			out[info.Query] = info
+			cacheUpdates[info.Query] = info
+		}
+	}
+	if len(cacheUpdates) > 0 {
+		geoCache.Lock()
+		for ip, info := range cacheUpdates {
+			geoCache.items[ip] = info
+		}
+		geoCache.Unlock()
+	}
+	return out
+}
+
+func staticRouteGeo(ip string) (geoInfo, bool) {
+	parsed := net.ParseIP(ip).To4()
+	if parsed == nil {
+		return geoInfo{}, false
+	}
+	switch {
+	case ip == "202.77.23.30":
+		return geoInfo{
+			Status:      "success",
+			Query:       ip,
+			Country:     "Hong Kong",
+			CountryCode: "HK",
+			City:        "Hong Kong",
+			ISP:         "China Unicom Global",
+			AS:          "AS10099 China Unicom Global",
+		}, true
+	case ip == "129.250.3.187" || ip == "203.131.240.78" || ip == "203.131.241.220":
+		return geoInfo{
+			Status:      "success",
+			Query:       ip,
+			Country:     "Hong Kong",
+			CountryCode: "HK",
+			City:        "Hong Kong",
+			ISP:         "NTT America, Inc.",
+			AS:          "AS2914 NTT America, Inc.",
+		}, true
+	case parsed[0] == 103 && parsed[1] == 22 && parsed[2] == 203:
+		return geoInfo{
+			Status:      "success",
+			Query:       ip,
+			Country:     "Hong Kong",
+			CountryCode: "HK",
+			City:        "Hong Kong",
+			ISP:         "Cloudflare, Inc.",
+			AS:          "AS13335 Cloudflare, Inc.",
+		}, true
+	case parsed[0] == 141 && parsed[1] == 101 && parsed[2] == 72:
+		return geoInfo{
+			Status:      "success",
+			Query:       ip,
+			Country:     "United States",
+			CountryCode: "US",
+			RegionName:  "California",
+			City:        "Los Angeles",
+			ISP:         "Cloudflare, Inc.",
+			AS:          "AS13335 Cloudflare, Inc.",
+		}, true
+	default:
+		return geoInfo{}, false
+	}
+}
+
+func reverseRouteGeo(ip string, timeout time.Duration) (geoInfo, bool) {
+	if !shouldReverseLookup(ip) {
+		return geoInfo{}, false
+	}
+	lookupTimeout := 800 * time.Millisecond
+	if timeout > 0 && timeout < lookupTimeout {
+		lookupTimeout = timeout
+	}
+	ptrLookupSem <- struct{}{}
+	defer func() { <-ptrLookupSem }()
+	ctx, cancel := context.WithTimeout(context.Background(), lookupTimeout)
+	defer cancel()
+	names, err := net.DefaultResolver.LookupAddr(ctx, ip)
+	if err != nil {
+		return geoInfo{}, false
+	}
+	for _, name := range names {
+		name = strings.TrimSuffix(strings.TrimSpace(name), ".")
+		if name == "" {
+			continue
+		}
+		info, ok := geoInfoFromTraceLine(ip + " " + name)
+		if !ok || regionFromGeo(info) == "unknown" {
+			continue
+		}
+		info.Query = ip
+		return info, true
+	}
+	return geoInfo{}, false
+}
+
+func shouldReverseLookup(ip string) bool {
+	parsed := net.ParseIP(ip).To4()
+	if parsed == nil {
+		return false
+	}
+	switch {
+	case parsed[0] == 129 && parsed[1] == 250:
+		return true
+	case parsed[0] == 203 && parsed[1] == 131:
+		return true
+	case parsed[0] == 202 && parsed[1] == 77:
+		return true
+	case parsed[0] == 103 && parsed[1] == 22:
+		return true
+	default:
+		return false
+	}
+}
+
+func parseEmbeddedGeoInfos(raw string) map[string]geoInfo {
+	out := map[string]geoInfo{}
+	for _, line := range strings.Split(raw, "\n") {
+		ips := ipv4Pattern.FindAllString(line, -1)
+		if len(ips) == 0 {
+			continue
+		}
+		info, ok := geoInfoFromTraceLine(line)
+		if !ok {
+			continue
+		}
+		for _, ip := range ips {
+			if isPublicIPv4(ip) {
+				info.Query = ip
+				out[ip] = info
+			}
+		}
+	}
+	return out
+}
+
+func geoInfoFromTraceLine(line string) (geoInfo, bool) {
+	lower := strings.ToLower(line)
+	info := geoInfo{Status: "success"}
+	switch {
+	case strings.Contains(lower, "hong kong") || strings.Contains(line, "香港") || strings.Contains(lower, "newthk") || strings.Contains(lower, ".hk.") || strings.Contains(lower, "-hk") || strings.Contains(lower, "_hk") || strings.Contains(lower, "hkg"):
+		info.Country = "Hong Kong"
+		info.CountryCode = "HK"
+		info.City = "Hong Kong"
+	case strings.Contains(lower, "singapore") || strings.Contains(line, "新加坡"):
+		info.Country = "Singapore"
+		info.CountryCode = "SG"
+		info.City = "Singapore"
+	case strings.Contains(lower, "japan") || strings.Contains(line, "日本") || strings.Contains(lower, "tokyo"):
+		info.Country = "Japan"
+		info.CountryCode = "JP"
+		if strings.Contains(lower, "tokyo") {
+			info.City = "Tokyo"
+		}
+	case strings.Contains(lower, "united states") || strings.Contains(line, "美国") || strings.Contains(lower, "los angeles") || strings.Contains(lower, "california"):
+		info.Country = "United States"
+		info.CountryCode = "US"
+		if strings.Contains(lower, "los angeles") {
+			info.City = "Los Angeles"
+		}
+	case strings.Contains(lower, "canada") || strings.Contains(line, "加拿大"):
+		info.Country = "Canada"
+		info.CountryCode = "CA"
+	case strings.Contains(lower, "germany") || strings.Contains(line, "德国"):
+		info.Country = "Germany"
+		info.CountryCode = "DE"
+	case strings.Contains(lower, "china") || strings.Contains(line, "中国"):
+		info.Country = "China"
+		info.CountryCode = "CN"
+	default:
+		return geoInfo{}, false
+	}
+	switch {
+	case strings.Contains(lower, "cloudflare"):
+		info.ISP = "Cloudflare, Inc."
+		info.AS = "AS13335 Cloudflare, Inc."
+	case strings.Contains(lower, "ntt"):
+		info.ISP = "NTT America, Inc."
+		info.AS = "AS2914 NTT America, Inc."
+	case strings.Contains(lower, "unicom") || strings.Contains(lower, "china169"):
+		info.ISP = "China Unicom"
+	}
+	if match := asnPattern.FindString(line); match != "" {
+		if info.AS == "" {
+			info.AS = match
+		} else if !strings.HasPrefix(info.AS, match) {
+			info.AS = match + " " + info.AS
+		}
+	}
+	return info, true
+}
+
+func pickRouteHint(target string, hops []string, infos map[string]geoInfo) *geoInfo {
+	limit := len(hops)
+	for i, hop := range hops {
+		if hop == target {
+			limit = i
+			break
+		}
+	}
+	if limit <= 0 {
+		limit = len(hops)
+	}
+	for i := limit - 1; i >= 0; i-- {
+		hop := hops[i]
+		if hop == target {
+			continue
+		}
+		info, ok := infos[hop]
+		if !ok {
+			continue
+		}
+		if strings.Contains(strings.ToLower(info.ISP+" "+info.AS), "cloudflare") {
+			return &info
+		}
+	}
+	for i := limit - 1; i >= 0; i-- {
+		hop := hops[i]
+		if hop == target {
+			continue
+		}
+		info, ok := infos[hop]
+		if !ok {
+			continue
+		}
+		// For Anycast classification, early domestic carrier hops only describe
+		// the local access path. Use the last non-mainland hop before the target
+		// as the route-region hint when no Cloudflare hop is geocoded.
+		if regionFromGeo(info) != "CN" {
+			return &info
+		}
+	}
+	return nil
+}
+
+func shouldTryEmbeddedFallback(pick geoInfo) bool {
+	text := strings.ToLower(pick.ISP + " " + pick.AS)
+	return !isCloudflareInfo(pick) && (strings.Contains(text, "ntt") || strings.Contains(text, "as2914"))
+}
+
+func shouldUseEmbeddedFallback(target string, primaryHops []string, primary *geoInfo, fallbackHops []string, fallback *geoInfo) bool {
+	if fallback == nil {
+		return false
+	}
+	if primary == nil {
+		return true
+	}
+	if isCloudflareInfo(*fallback) && !isCloudflareInfo(*primary) {
+		return true
+	}
+	primaryConfidence := confidenceFor(target, primary.Query, primaryHops, *primary)
+	fallbackConfidence := confidenceFor(target, fallback.Query, fallbackHops, *fallback)
+	if regionFromGeo(*fallback) != regionFromGeo(*primary) && fallbackConfidence > primaryConfidence {
+		return true
+	}
+	return false
+}
+
+func isCloudflareInfo(info geoInfo) bool {
+	return strings.Contains(strings.ToLower(info.ISP+" "+info.AS), "cloudflare")
+}
+
+func regionFromGeo(info geoInfo) string {
+	cc := strings.ToUpper(strings.TrimSpace(info.CountryCode))
+	country := strings.ToLower(info.Country + " " + info.RegionName + " " + info.City)
+	switch {
+	case cc == "HK" || strings.Contains(country, "hong kong") || strings.Contains(country, "香港"):
+		return "HK"
+	case cc == "JP" || strings.Contains(country, "japan"):
+		return "JP"
+	case cc == "SG" || strings.Contains(country, "singapore"):
+		return "SG"
+	case cc == "US":
+		return "US"
+	case cc == "CN":
+		return "CN"
+	case isEUCountry(cc):
+		return "EU"
+	case cc != "":
+		return cc
+	default:
+		return "unknown"
+	}
+}
+
+func confidenceFor(target, hint string, hops []string, info geoInfo) float64 {
+	if hint == "" {
+		return 0
+	}
+	base := 0.65
+	for i := len(hops) - 1; i >= 0; i-- {
+		if hops[i] == hint && i >= len(hops)-3 {
+			base = 0.85
+			break
+		}
+	}
+	if strings.Contains(strings.ToLower(info.ISP+" "+info.AS), "cloudflare") {
+		base += 0.1
+	}
+	if hint == target {
+		base -= 0.2
+	}
+	if base > 0.98 {
+		return 0.98
+	}
+	if base < 0 {
+		return 0
+	}
+	return base
+}
+
+func isPublicIPv4(value string) bool {
+	ip := net.ParseIP(value).To4()
+	if ip == nil {
+		return false
+	}
+	if ip[0] == 10 || ip[0] == 127 || ip[0] == 0 {
+		return false
+	}
+	if ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31 {
+		return false
+	}
+	if ip[0] == 192 && ip[1] == 168 {
+		return false
+	}
+	if ip[0] == 169 && ip[1] == 254 {
+		return false
+	}
+	return true
+}
+
+func isEUCountry(cc string) bool {
+	switch cc {
+	case "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE", "GB", "CH", "NO":
+		return true
+	default:
+		return false
+	}
+}

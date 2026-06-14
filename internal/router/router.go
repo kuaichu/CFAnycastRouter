@@ -1,0 +1,846 @@
+package router
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"math"
+	"net"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"cf-anycast-router/internal/cloudflaredns"
+	"cf-anycast-router/internal/config"
+	"cf-anycast-router/internal/discover"
+	"cf-anycast-router/internal/history"
+	"cf-anycast-router/internal/netinfo"
+	"cf-anycast-router/internal/output"
+	"cf-anycast-router/internal/probe"
+	"cf-anycast-router/internal/routegeo"
+	cftrace "cf-anycast-router/internal/trace"
+)
+
+type Router struct {
+	cfg       *config.Config
+	state     *history.State
+	stateMu   sync.Mutex
+	pingSem   chan struct{}
+	routeSem  chan struct{}
+	anchorSem chan struct{}
+	progress  func(Candidate)
+}
+
+type Candidate struct {
+	IP              string  `json:"ip"`
+	Stage           string  `json:"stage"`
+	Segment         string  `json:"segment"`
+	Pool            string  `json:"pool"`
+	Carrier         string  `json:"carrier"`
+	ExpectedPOP     string  `json:"expected_pop"`
+	ObservedPOP     string  `json:"observed_pop"`
+	ObservedColo    string  `json:"observed_colo"`
+	CFRegion        string  `json:"cf_region"`
+	RouteRegion     string  `json:"route_region"`
+	RouteHintIP     string  `json:"route_hint_ip"`
+	RouteCountry    string  `json:"route_country"`
+	RouteCity       string  `json:"route_city"`
+	RouteISP        string  `json:"route_isp"`
+	RouteConfidence float64 `json:"route_confidence"`
+	RouteError      string  `json:"route_error,omitempty"`
+	Region          string  `json:"region"`
+	RegionSource    string  `json:"region_source"`
+	AnchorRegion    string  `json:"anchor_region,omitempty"`
+	AnchorName      string  `json:"anchor_name,omitempty"`
+	AnchorHost      string  `json:"anchor_host,omitempty"`
+	AnchorRTTMs     float64 `json:"anchor_rtt_ms,omitempty"`
+	AnchorJitterMs  float64 `json:"anchor_jitter_ms,omitempty"`
+	AnchorLossRate  float64 `json:"anchor_loss_rate,omitempty"`
+	AnchorError     string  `json:"anchor_error,omitempty"`
+	PingRTTMs       float64 `json:"ping_rtt_ms"`
+	PingLossRate    float64 `json:"ping_loss_rate"`
+	PingError       string  `json:"ping_error,omitempty"`
+	AvgRTTMs        float64 `json:"avg_rtt_ms"`
+	JitterMs        float64 `json:"jitter_ms"`
+	LossRate        float64 `json:"loss_rate"`
+	SpikeRate       float64 `json:"spike_rate"`
+	Score           float64 `json:"score"`
+	PopPenalty      float64 `json:"pop_penalty"`
+	DriftPenalty    float64 `json:"drift_penalty"`
+	HijackPenalty   float64 `json:"hijack_penalty"`
+	LearnedBonus    float64 `json:"learned_bonus"`
+	Error           string  `json:"error,omitempty"`
+	Quarantined     bool    `json:"quarantined"`
+}
+
+type CycleResult struct {
+	Time       time.Time   `json:"time"`
+	Carrier    string      `json:"carrier"`
+	Best       *Candidate  `json:"best,omitempty"`
+	CurrentIP  string      `json:"current_ip"`
+	Switched   bool        `json:"switched"`
+	Decision   string      `json:"decision"`
+	Candidates []Candidate `json:"candidates"`
+	Outputs    []string    `json:"outputs"`
+}
+
+type RangeValidation struct {
+	InputIP         string           `json:"input_ip"`
+	ASN             string           `json:"asn"`
+	ASNName         string           `json:"asn_name"`
+	LookupPrefix    string           `json:"lookup_prefix"`
+	TestedPrefix    string           `json:"tested_prefix"`
+	AcceptedCIDR    string           `json:"accepted_cidr,omitempty"`
+	ReferencePOP    string           `json:"reference_pop"`
+	ReferenceRegion string           `json:"reference_region"`
+	ReferenceRTT    float64          `json:"reference_rtt_ms"`
+	MatchRate       float64          `json:"match_rate"`
+	Samples         []Candidate      `json:"samples"`
+	Accepted        bool             `json:"accepted"`
+	Reason          string           `json:"reason"`
+	Fallback        *RangeValidation `json:"fallback,omitempty"`
+}
+
+func New(cfg *config.Config, st *history.State) *Router {
+	return &Router{cfg: cfg, state: st, pingSem: make(chan struct{}, 16), routeSem: make(chan struct{}, 8), anchorSem: make(chan struct{}, 16)}
+}
+
+func (r *Router) SetProgress(fn func(Candidate)) {
+	r.progress = fn
+}
+
+func (r *Router) Evaluate() []Candidate {
+	now := time.Now()
+	candidates := r.probeTargets(discover.Targets(r.cfg, r.state), now)
+	sortCandidates(candidates)
+	return candidates
+}
+
+func (r *Router) Cycle() (*CycleResult, error) {
+	now := time.Now()
+	targets := discover.Targets(r.cfg, r.state)
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("no scan targets available")
+	}
+	candidates := r.probeTargets(targets, now)
+	sortCandidates(candidates)
+	result := &CycleResult{
+		Time:       now,
+		Carrier:    r.cfg.Carrier,
+		CurrentIP:  r.state.CurrentIP,
+		Candidates: candidates,
+	}
+	if outputs := r.updateRegionalDNS(candidates); len(outputs) > 0 {
+		result.Outputs = append(result.Outputs, outputs...)
+	}
+	if outputs := r.renderAnchorReplacements(candidates); len(outputs) > 0 {
+		result.Outputs = append(result.Outputs, outputs...)
+	}
+	best := firstHealthy(candidates)
+	if best == nil {
+		r.state.CandidateIP = ""
+		r.state.CandidateRounds = 0
+		result.Decision = "no healthy candidate"
+		r.state.LastDecision = result.Decision
+		r.state.LastDecisionTime = now
+		return result, nil
+	}
+	result.Best = best
+	shouldSwitch, reason := r.shouldSwitch(best, candidates)
+	result.Decision = reason
+	if shouldSwitch {
+		r.state.CurrentIP = best.IP
+		r.state.CurrentScore = best.Score
+		r.state.CurrentBaseline = best.AvgRTTMs
+		r.state.CandidateIP = ""
+		r.state.CandidateRounds = 0
+		result.CurrentIP = best.IP
+		result.Switched = true
+		result.Decision = "switched: " + reason
+		written, err := output.RenderAll(r.cfg.Outputs, output.ActiveRoute{
+			IP:        best.IP,
+			Domain:    r.cfg.TraceHost,
+			Name:      "cf-anycast-active",
+			Port:      r.cfg.ProbePort,
+			SNI:       r.cfg.TraceHost,
+			Score:     best.Score,
+			Carrier:   best.Carrier,
+			POP:       best.Region,
+			Decision:  result.Decision,
+			TraceHost: r.cfg.TraceHost,
+		})
+		if err != nil {
+			return result, err
+		}
+		result.Outputs = append(result.Outputs, written...)
+	} else if r.state.CurrentIP == "" {
+		result.Decision = "no active route yet; " + reason
+	}
+	r.state.LastDecision = result.Decision
+	r.state.LastDecisionTime = now
+	if len(result.Outputs) > 0 {
+		r.state.LastOutputSummary = strings.Join(result.Outputs, ", ")
+	}
+	return result, nil
+}
+
+func (r *Router) updateRegionalDNS(candidates []Candidate) []string {
+	if !r.cfg.CloudflareDNS.Enabled {
+		return nil
+	}
+	client, err := cloudflaredns.New(r.cfg.CloudflareDNS)
+	if err != nil {
+		return []string{"cloudflare_dns error: " + err.Error()}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	records := r.cfg.CloudflareDNS.RegionRecords()
+	out := make([]string, 0, len(records))
+	for _, record := range records {
+		best := firstHealthyInRouteRegionForType(candidates, record.Region, record.Type)
+		if best == nil {
+			out = append(out, fmt.Sprintf("cloudflare_dns %s %s %s skipped: no healthy candidate", record.Region, record.Type, record.Domain))
+			continue
+		}
+		update, err := client.UpsertRecord(ctx, record.Region, record.Type, record.Domain, best.IP)
+		if err != nil {
+			out = append(out, fmt.Sprintf("cloudflare_dns %s %s %s error: %v", record.Region, record.Type, record.Domain, err))
+			continue
+		}
+		out = append(out, fmt.Sprintf("cloudflare_dns %s %s %s -> %s %s", update.Region, update.Type, update.Domain, update.IP, update.Action))
+	}
+	return out
+}
+
+func (r *Router) renderAnchorReplacements(candidates []Candidate) []string {
+	anchors := enabledAnchorProbes(r.cfg.AnchorProbes)
+	if len(anchors) == 0 {
+		return nil
+	}
+	const path = "out/anchor-replacements.yaml"
+	var b strings.Builder
+	b.WriteString("# generated by cf-anycast-router\n")
+	b.WriteString("# server is replaced with the selected Cloudflare IP; servername/ws Host keep the original node entry domain.\n")
+	b.WriteString("# fill uuid/password fields in your subscription tool if needed; secrets are intentionally not stored here.\n")
+	b.WriteString("proxies:\n")
+	written := 0
+	for _, anchor := range anchors {
+		best := firstHealthyForAnchor(candidates, anchor.Region, anchor.Name, anchor.Host)
+		if best == nil {
+			continue
+		}
+		name := anchor.Name
+		if name == "" {
+			name = anchor.Region
+		}
+		b.WriteString(fmt.Sprintf("  - name: %q\n", name+" | "+best.IP))
+		b.WriteString("    type: vless\n")
+		b.WriteString(fmt.Sprintf("    server: %s\n", best.IP))
+		b.WriteString(fmt.Sprintf("    port: %d\n", anchor.Port))
+		b.WriteString("    uuid: CHANGE_ME\n")
+		b.WriteString("    udp: true\n")
+		b.WriteString("    tls: true\n")
+		b.WriteString("    skip-cert-verify: false\n")
+		b.WriteString(fmt.Sprintf("    servername: %s\n", anchor.Host))
+		if anchor.Network == "ws" {
+			b.WriteString("    network: ws\n")
+			b.WriteString("    ws-opts:\n")
+			b.WriteString(fmt.Sprintf("      path: %s\n", anchor.Path))
+			b.WriteString("      headers:\n")
+			b.WriteString(fmt.Sprintf("        Host: %s\n", anchor.Host))
+		}
+		b.WriteString(fmt.Sprintf("    # anchor-region: %s, measured: %.1fms, score: %.1f\n", best.AnchorRegion, best.AnchorRTTMs, best.Score))
+		written++
+	}
+	if written == 0 {
+		return []string{"anchor_replacements skipped: no measured anchor candidates"}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return []string{"anchor_replacements error: " + err.Error()}
+	}
+	if err := os.WriteFile(path, []byte(b.String()), 0644); err != nil {
+		return []string{"anchor_replacements error: " + err.Error()}
+	}
+	return []string{path}
+}
+
+func (r *Router) ValidateIPRange(ip string, sampleCount int, minMatchRate float64) (*RangeValidation, error) {
+	parsed := net.ParseIP(strings.TrimSpace(ip)).To4()
+	if parsed == nil {
+		return nil, fmt.Errorf("invalid IPv4 address")
+	}
+	info, err := netinfo.LookupPrefix(parsed.String())
+	if err != nil {
+		return nil, err
+	}
+	if sampleCount < 4 {
+		sampleCount = 8
+	}
+	if minMatchRate <= 0 || minMatchRate > 1 {
+		minMatchRate = 0.70
+	}
+	primary := r.validateCIDRAgainstIP(parsed.String(), info.Prefix, info, sampleCount, minMatchRate)
+	if primary.Accepted {
+		return primary, nil
+	}
+	local24, ok := discover.IPv4Slash24(parsed.String())
+	if ok && local24 != info.Prefix {
+		fallback := r.validateCIDRAgainstIP(parsed.String(), local24, info, sampleCount, minMatchRate)
+		primary.Fallback = fallback
+		if fallback.Accepted {
+			primary.AcceptedCIDR = fallback.AcceptedCIDR
+			primary.Accepted = true
+			primary.Reason = "BGP prefix was mixed; accepted local /24 instead"
+		}
+	}
+	return primary, nil
+}
+
+func (r *Router) validateCIDRAgainstIP(ip, cidr string, info *netinfo.PrefixInfo, sampleCount int, minMatchRate float64) *RangeValidation {
+	now := time.Now()
+	ref := r.probeOne(Candidate{
+		IP:          ip,
+		Stage:       "lookup-reference",
+		Segment:     cidr,
+		Pool:        "lookup",
+		Carrier:     r.cfg.Carrier,
+		ExpectedPOP: strings.Join(r.cfg.PreferredPOPs, "/"),
+	}, now, nil, 0)
+	result := &RangeValidation{
+		InputIP:         ip,
+		ASN:             info.ASN,
+		ASNName:         info.Name,
+		LookupPrefix:    info.Prefix,
+		TestedPrefix:    cidr,
+		ReferencePOP:    ref.ObservedPOP,
+		ReferenceRegion: ref.Region,
+		ReferenceRTT:    ref.AvgRTTMs,
+	}
+	if ref.Error != "" || ref.Region == "" || ref.Region == "unknown" {
+		result.Reason = "reference IP could not be classified"
+		return result
+	}
+	ips := discover.RandomSamples(cidr, sampleCount)
+	if len(ips) == 0 {
+		result.Reason = "no sample IPs generated"
+		return result
+	}
+	targets := make([]discover.Target, 0, len(ips)+1)
+	targets = append(targets, discover.Target{IP: ip, Stage: "lookup-reference", Segment: cidr, Carrier: r.cfg.Carrier, Weight: 1})
+	for _, sampleIP := range ips {
+		if sampleIP == ip {
+			continue
+		}
+		targets = append(targets, discover.Target{IP: sampleIP, Stage: "lookup-sample", Segment: cidr, Carrier: r.cfg.Carrier, Weight: 1})
+	}
+	samples := r.probeTargets(targets, now)
+	sortCandidates(samples)
+	result.Samples = samples
+	usable := 0
+	matches := 0
+	for _, sample := range samples {
+		if sample.Error != "" || sample.Region == "" || sample.Region == "unknown" {
+			continue
+		}
+		usable++
+		if sample.Region == ref.Region {
+			matches++
+		}
+	}
+	if usable == 0 {
+		result.Reason = "no usable samples"
+		return result
+	}
+	result.MatchRate = float64(matches) / float64(usable)
+	if result.MatchRate < minMatchRate {
+		result.Reason = fmt.Sprintf("discarded: only %.0f%% samples matched reference route region %s", result.MatchRate*100, ref.Region)
+		return result
+	}
+	result.Accepted = true
+	result.AcceptedCIDR = cidr
+	result.Reason = fmt.Sprintf("accepted: %.0f%% samples matched reference route region %s", result.MatchRate*100, ref.Region)
+	return result
+}
+
+func (r *Router) probeTargets(targets []discover.Target, now time.Time) []Candidate {
+	var jobs []Candidate
+	for _, target := range targets {
+		ip := strings.TrimSpace(target.IP)
+		if ip == "" {
+			continue
+		}
+		profile := r.state.Profile(ip)
+		jobs = append(jobs, Candidate{
+			IP:           ip,
+			Stage:        target.Stage,
+			Segment:      target.Segment,
+			Pool:         target.Stage,
+			Carrier:      target.Carrier,
+			ExpectedPOP:  strings.Join(r.cfg.PreferredPOPs, "/"),
+			LearnedBonus: stageBonus(target),
+			Quarantined:  !profile.QuarantineUntil.IsZero() && now.Before(profile.QuarantineUntil),
+		})
+	}
+	out := make([]Candidate, len(jobs))
+	var wg sync.WaitGroup
+	wg.Add(len(jobs))
+	maxRoutes := r.cfg.MaxRouteTracesPerCycle
+	if maxRoutes < 1 {
+		maxRoutes = 1
+	}
+	routeBudget := int64(maxRoutes)
+	if len(jobs) < maxRoutes {
+		routeBudget = int64(len(jobs))
+	}
+	var routeUsed int64
+	for i, job := range jobs {
+		go func(idx int, c Candidate) {
+			defer wg.Done()
+			probed := r.probeOne(c, now, &routeUsed, routeBudget)
+			out[idx] = probed
+			if r.progress != nil {
+				r.progress(probed)
+			}
+		}(i, job)
+	}
+	wg.Wait()
+	return out
+}
+
+func (r *Router) probeOne(c Candidate, now time.Time, routeUsed *int64, routeBudget int64) Candidate {
+	if c.Quarantined {
+		c.Score = math.Inf(1)
+		c.Error = "temporarily quarantined after POP drift"
+		return c
+	}
+	ping := r.ping(c.IP)
+	c.PingRTTMs = ping.AvgRTTMs
+	c.PingLossRate = ping.LossRate
+	if ping.Successes == 0 {
+		c.PingError = ping.LastError
+	}
+	pr := probe.TLS(c.IP, r.cfg.TraceHost, r.cfg.ProbePort, r.cfg.ProbeAttempts, r.cfg.ProbeTimeout, r.cfg.SpikeThreshold, r.cfg.SpikeMultiplier)
+	c.AvgRTTMs = pr.AvgRTTMs
+	c.JitterMs = pr.JitterMs
+	c.LossRate = pr.LossRate
+	c.SpikeRate = pr.SpikeRate
+	if pr.Successes == 0 {
+		c.Score = math.Inf(1)
+		c.Error = pr.LastError
+		if c.Stage == "segment-probe" && c.Segment != "" {
+			r.stateMu.Lock()
+			r.state.RecordSegmentPreflight(c.Segment, c.Carrier, c.IP, false, c.Error, now)
+			r.stateMu.Unlock()
+		}
+		return c
+	}
+	if c.Stage == "segment-probe" {
+		c.Region = "preflight"
+		c.RegionSource = "segment-probe"
+		c.Score = c.PingRTTMs + c.PingLossRate*800 + c.AvgRTTMs + c.LossRate*300
+		r.stateMu.Lock()
+		r.state.RecordSegmentPreflight(c.Segment, c.Carrier, c.IP, true, "", now)
+		r.stateMu.Unlock()
+		return c
+	}
+	tr := cftrace.CloudflareTrace(c.IP, r.cfg.TraceHost, r.cfg.TracePath, r.cfg.ProbePort, r.cfg.ProbeTimeout)
+	c.ObservedPOP = tr.POP
+	c.ObservedColo = strings.ToUpper(strings.TrimSpace(tr.Raw["colo"]))
+	if c.ObservedPOP == "" {
+		c.ObservedPOP = "unknown"
+	}
+	if c.ObservedColo == "" && c.ObservedPOP != "unknown" {
+		c.ObservedColo = c.ObservedPOP
+	}
+	c.CFRegion = cftrace.POPRegion(c.ObservedPOP)
+	var route routegeo.Result
+	if c.LossRate <= 0.5 || c.Stage == "lookup-reference" {
+		if routeUsed == nil || atomic.AddInt64(routeUsed, 1) <= routeBudget || c.Stage == "lookup-reference" {
+			route = r.traceRoute(c.IP)
+		} else {
+			route.Error = "route trace skipped by per-cycle budget"
+		}
+	}
+	c.RouteRegion = route.Region
+	c.RouteHintIP = route.HintIP
+	c.RouteCountry = route.Country
+	c.RouteCity = route.City
+	c.RouteISP = route.ISP
+	c.RouteConfidence = route.Confidence
+	c.RouteError = route.Error
+	c.Region, c.RegionSource = effectiveRegion(c.RouteRegion, c.CFRegion, c.PingRTTMs, c.AvgRTTMs)
+	if anchor, ok := r.bestAnchorProbe(c.IP); ok {
+		c.AnchorRegion = anchor.Region
+		c.AnchorName = anchor.Name
+		c.AnchorHost = anchor.Host
+		c.AnchorRTTMs = anchor.Result.AvgRTTMs
+		c.AnchorJitterMs = anchor.Result.JitterMs
+		c.AnchorLossRate = anchor.Result.LossRate
+	} else if len(enabledAnchorProbes(r.cfg.AnchorProbes)) > 0 {
+		c.AnchorError = "no usable anchor probe"
+	}
+	if c.Region == "" {
+		c.Region = "unknown"
+	}
+	scoreRTT := c.AvgRTTMs
+	scoreJitter := c.JitterMs
+	scoreLoss := c.LossRate
+	if c.RegionSource == "anchor" && c.AnchorRTTMs > 0 {
+		scoreRTT = c.AnchorRTTMs
+		scoreJitter = c.AnchorJitterMs
+		scoreLoss = c.AnchorLossRate
+	}
+	c.PopPenalty = popPenalty(c.Region, scoreRTT)
+	if !tr.OK {
+		c.HijackPenalty = r.cfg.HijackPenalty
+	}
+	preferred := r.cfg.PreferredPOPSet()
+	isPreferred := preferred[c.Region]
+	if (c.Stage == "hot" || c.Stage == "learned" || c.Stage == "seed" || c.Stage == "seed-sample") && (c.Region == "US" || c.Region == "EU") {
+		c.DriftPenalty = r.cfg.DriftPenalty
+		if r.cfg.QuarantineMinutes > 0 {
+			r.stateMu.Lock()
+			r.state.Profile(c.IP).QuarantineUntil = now.Add(time.Duration(r.cfg.QuarantineMinutes) * time.Minute)
+			r.stateMu.Unlock()
+		}
+	}
+	c.Score = scoreRTT + scoreJitter*0.5 + scoreLoss*500 + c.SpikeRate*80 + c.PopPenalty + c.DriftPenalty + c.HijackPenalty - c.LearnedBonus
+	r.stateMu.Lock()
+	oldPOP, changed := r.state.Record(c.IP, c.Carrier, c.Region, now, c.AvgRTTMs, c.JitterMs, c.LossRate, c.SpikeRate, c.Score)
+	if changed {
+		log.Printf("[drift] %s %s route region changed: %s -> %s (cf_colo=%s/%s)", c.IP, c.Carrier, oldPOP, c.Region, c.ObservedColo, c.ObservedPOP)
+	}
+	if c.Segment != "" {
+		seg := r.state.RecordSegment(c.Segment, c.Carrier, c.Region, isPreferred, now, c.AvgRTTMs, c.LossRate, c.SpikeRate, c.Score)
+		if !seg.Promoted && seg.Samples >= r.cfg.PromoteMinSamples && seg.PreferredRate >= r.cfg.PromotePOPProbability {
+			r.state.PromoteSegment(c.Segment, c.Carrier, now)
+			log.Printf("[learn] promoted %s carrier=%s preferred_rate=%.0f%% samples=%d", c.Segment, c.Carrier, seg.PreferredRate*100, seg.Samples)
+		}
+		if isPreferred && c.Score <= r.cfg.HotMaxScore && c.LossRate <= r.cfg.FastSwitchLossRate && c.SpikeRate <= r.cfg.FastSwitchSpikeRate {
+			r.state.AddHotIP(c.Segment, c.Carrier, history.HotIP{
+				IP:           c.IP,
+				POP:          c.Region,
+				Score:        c.Score,
+				PingRTTMs:    c.PingRTTMs,
+				PingLossRate: c.PingLossRate,
+				AvgRTTMs:     c.AvgRTTMs,
+				JitterMs:     c.JitterMs,
+				LossRate:     c.LossRate,
+				SpikeRate:    c.SpikeRate,
+				LastSeen:     now,
+			}, r.cfg.HotMaxPerSegment)
+		}
+	}
+	r.stateMu.Unlock()
+	return c
+}
+
+func (r *Router) traceRoute(ip string) routegeo.Result {
+	if r.routeSem != nil {
+		r.routeSem <- struct{}{}
+		defer func() { <-r.routeSem }()
+	}
+	return routegeo.TraceWithOptions(ip, 22*time.Second, routegeo.TraceOptions{
+		Command: r.cfg.RouteTraceCommand,
+		Args:    r.cfg.RouteTraceArgs,
+	})
+}
+
+func (r *Router) ping(ip string) probe.Result {
+	if r.pingSem != nil {
+		r.pingSem <- struct{}{}
+		defer func() { <-r.pingSem }()
+	}
+	return probe.ICMP(ip, r.cfg.ProbeAttempts, r.cfg.ProbeTimeout)
+}
+
+type anchorProbeResult struct {
+	config.AnchorProbeConfig
+	Result probe.Result
+}
+
+func (r *Router) bestAnchorProbe(ip string) (anchorProbeResult, bool) {
+	anchors := enabledAnchorProbes(r.cfg.AnchorProbes)
+	if len(anchors) == 0 {
+		return anchorProbeResult{}, false
+	}
+	quickAttempts := 1
+	fullAttempts := r.cfg.ProbeAttempts
+	if fullAttempts < 1 {
+		fullAttempts = 1
+	}
+	if fullAttempts > 5 {
+		fullAttempts = 5
+	}
+	timeout := r.cfg.ProbeTimeout
+	if timeout <= 0 || timeout > 2*time.Second {
+		timeout = 2 * time.Second
+	}
+	var best anchorProbeResult
+	ok := false
+	for _, anchor := range anchors {
+		if r.anchorSem != nil {
+			r.anchorSem <- struct{}{}
+		}
+		var result probe.Result
+		if anchor.Network == "ws" && strings.TrimSpace(anchor.UUIDEnv) != "" && strings.TrimSpace(os.Getenv(anchor.UUIDEnv)) != "" {
+			result = probe.VLESSWebSocketHTTPS(ip, anchor.Host, anchor.Path, anchor.Port, os.Getenv(anchor.UUIDEnv), anchor.TestHost, anchor.TestPath, fullAttempts, timeout, r.cfg.SpikeThreshold, r.cfg.SpikeMultiplier)
+		} else if anchor.Network == "ws" {
+			result = probe.WebSocket(ip, anchor.Host, anchor.Path, anchor.Port, quickAttempts, timeout, r.cfg.SpikeThreshold, r.cfg.SpikeMultiplier)
+		} else {
+			result = probe.HTTPS(ip, anchor.Host, anchor.Path, anchor.Port, quickAttempts, timeout, r.cfg.SpikeThreshold, r.cfg.SpikeMultiplier)
+		}
+		if r.anchorSem != nil {
+			<-r.anchorSem
+		}
+		if result.Successes == 0 {
+			continue
+		}
+		item := anchorProbeResult{AnchorProbeConfig: anchor, Result: result}
+		if !ok || item.Result.AvgRTTMs < best.Result.AvgRTTMs {
+			best = item
+			ok = true
+		}
+	}
+	return best, ok
+}
+
+func enabledAnchorProbes(anchors []config.AnchorProbeConfig) []config.AnchorProbeConfig {
+	out := make([]config.AnchorProbeConfig, 0, len(anchors))
+	for _, anchor := range anchors {
+		if anchor.Enabled && anchor.Region != "" && anchor.Host != "" {
+			out = append(out, anchor)
+		}
+	}
+	return out
+}
+
+func (r *Router) shouldSwitch(best *Candidate, candidates []Candidate) (bool, string) {
+	if best == nil || best.Score <= 0 || math.IsInf(best.Score, 0) {
+		return false, "best candidate is not usable"
+	}
+	if r.state.CurrentIP == "" {
+		return true, "no active route"
+	}
+	if r.state.CurrentIP == best.IP {
+		r.state.CandidateIP = ""
+		r.state.CandidateRounds = 0
+		r.state.CurrentScore = best.Score
+		r.state.CurrentBaseline = best.AvgRTTMs
+		return false, "current route remains best"
+	}
+	if r.state.CurrentScore <= 0 {
+		return true, "active route has no baseline score"
+	}
+	current := findByIP(r.state.CurrentIP, candidates)
+	if current != nil && current.Error == "" {
+		if current.LossRate > r.cfg.FastSwitchLossRate {
+			return true, fmt.Sprintf("active route loss %.1f%% exceeds %.1f%%", current.LossRate*100, r.cfg.FastSwitchLossRate*100)
+		}
+		if r.state.CurrentBaseline > 0 && current.AvgRTTMs > r.state.CurrentBaseline*r.cfg.FastSwitchRTTMultiplier {
+			return true, fmt.Sprintf("active route RTT %.1fms exceeds %.1fx baseline %.1fms", current.AvgRTTMs, r.cfg.FastSwitchRTTMultiplier, r.state.CurrentBaseline)
+		}
+		if current.SpikeRate > r.cfg.FastSwitchSpikeRate {
+			return true, fmt.Sprintf("active route spike rate %.1f%% exceeds %.1f%%", current.SpikeRate*100, r.cfg.FastSwitchSpikeRate*100)
+		}
+	}
+	improvement := (r.state.CurrentScore - best.Score) / r.state.CurrentScore * 100
+	if improvement < r.cfg.SwitchImprovementPct {
+		r.state.CandidateIP = ""
+		r.state.CandidateRounds = 0
+		return false, fmt.Sprintf("kept current; %.1f%% improvement is below %.1f%%", improvement, r.cfg.SwitchImprovementPct)
+	}
+	if r.state.CandidateIP != best.IP {
+		r.state.CandidateIP = best.IP
+		r.state.CandidateRounds = 1
+		return false, fmt.Sprintf("candidate %s is better by %.1f%%; observing 1/%d rounds", best.IP, improvement, r.cfg.SwitchStableRounds)
+	}
+	r.state.CandidateRounds++
+	if r.state.CandidateRounds < r.cfg.SwitchStableRounds {
+		return false, fmt.Sprintf("candidate %s is better by %.1f%%; observing %d/%d rounds", best.IP, improvement, r.state.CandidateRounds, r.cfg.SwitchStableRounds)
+	}
+	return true, fmt.Sprintf("candidate %s held advantage for %d rounds (%.1f%% better)", best.IP, r.state.CandidateRounds, improvement)
+}
+
+func firstHealthy(candidates []Candidate) *Candidate {
+	for i := range candidates {
+		if candidates[i].Error == "" && candidates[i].Region != "" && candidates[i].Region != "unknown" && !math.IsInf(candidates[i].Score, 0) {
+			return &candidates[i]
+		}
+	}
+	return nil
+}
+
+func firstHealthyInRegion(candidates []Candidate, region string) *Candidate {
+	return firstHealthyInRegionForType(candidates, region, "A")
+}
+
+func firstHealthyInRegionForType(candidates []Candidate, region, recordType string) *Candidate {
+	region = strings.ToUpper(strings.TrimSpace(region))
+	recordType = strings.ToUpper(strings.TrimSpace(recordType))
+	for i := range candidates {
+		if candidates[i].Region != region {
+			continue
+		}
+		ip := net.ParseIP(candidates[i].IP)
+		if recordType == "A" && (ip == nil || ip.To4() == nil) {
+			continue
+		}
+		if recordType == "AAAA" && (ip == nil || ip.To4() != nil) {
+			continue
+		}
+		if candidates[i].Error == "" && !candidates[i].Quarantined && !math.IsInf(candidates[i].Score, 0) {
+			return &candidates[i]
+		}
+	}
+	return nil
+}
+
+func firstHealthyInRouteRegionForType(candidates []Candidate, region, recordType string) *Candidate {
+	region = strings.ToUpper(strings.TrimSpace(region))
+	recordType = strings.ToUpper(strings.TrimSpace(recordType))
+	var best *Candidate
+	bestScore := math.Inf(1)
+	for i := range candidates {
+		if strings.ToUpper(strings.TrimSpace(candidates[i].RouteRegion)) != region {
+			continue
+		}
+		ip := net.ParseIP(candidates[i].IP)
+		if recordType == "A" && (ip == nil || ip.To4() == nil) {
+			continue
+		}
+		if recordType == "AAAA" && (ip == nil || ip.To4() != nil) {
+			continue
+		}
+		if candidates[i].Error == "" && !candidates[i].Quarantined && !math.IsInf(candidates[i].Score, 0) {
+			score := dnsRouteScore(candidates[i])
+			if score < bestScore {
+				best = &candidates[i]
+				bestScore = score
+			}
+		}
+	}
+	return best
+}
+
+func dnsRouteScore(c Candidate) float64 {
+	rtt := c.PingRTTMs
+	if rtt <= 0 {
+		rtt = c.AvgRTTMs
+	}
+	if rtt <= 0 {
+		rtt = 9999
+	}
+	return rtt + c.PingLossRate*800 + c.LossRate*300 + c.SpikeRate*80
+}
+
+func firstHealthyForAnchor(candidates []Candidate, region, name, host string) *Candidate {
+	for i := range candidates {
+		c := &candidates[i]
+		if c.Error != "" || c.Quarantined || math.IsInf(c.Score, 0) {
+			continue
+		}
+		if c.AnchorRegion != region {
+			continue
+		}
+		if name != "" && c.AnchorName != name {
+			continue
+		}
+		if host != "" && c.AnchorHost != host {
+			continue
+		}
+		return c
+	}
+	return nil
+}
+
+func sortCandidates(candidates []Candidate) {
+	sort.Slice(candidates, func(i, j int) bool {
+		a, b := candidates[i], candidates[j]
+		if math.IsInf(a.Score, 0) && math.IsInf(b.Score, 0) {
+			return a.IP < b.IP
+		}
+		if math.IsInf(a.Score, 0) {
+			return false
+		}
+		if math.IsInf(b.Score, 0) {
+			return true
+		}
+		if a.Score != b.Score {
+			return a.Score < b.Score
+		}
+		return a.AvgRTTMs < b.AvgRTTMs
+	})
+}
+
+func popPenalty(region string, rtt float64) float64 {
+	switch region {
+	case "HK", "JP", "SG":
+		return 0
+	case "US":
+		return 100
+	case "EU":
+		return 150
+	case "unknown":
+		return 120
+	}
+	return 30
+}
+
+func isPreferredAsia(region string) bool {
+	return region == "HK" || region == "JP" || region == "SG"
+}
+
+func stageBonus(target discover.Target) float64 {
+	switch target.Stage {
+	case "hot":
+		return 24
+	case "learned":
+		if target.Weight > 0 {
+			return math.Min(20, target.Weight*6)
+		}
+		return 10
+	default:
+		return 0
+	}
+}
+
+func effectiveRegion(routeRegion, _ string, _, _ float64) (string, string) {
+	routeRegion = normalizeRegion(routeRegion)
+	if isKnownRegion(routeRegion) {
+		return routeRegion, "route"
+	}
+	return "unknown", "unknown"
+}
+
+func normalizeRegion(region string) string {
+	region = strings.ToUpper(strings.TrimSpace(region))
+	if region == "" || region == "-" {
+		return "unknown"
+	}
+	return region
+}
+
+func isKnownRegion(region string) bool {
+	return region != "" && region != "UNKNOWN" && region != "unknown" && region != "-"
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func findByIP(ip string, candidates []Candidate) *Candidate {
+	for i := range candidates {
+		if candidates[i].IP == ip {
+			return &candidates[i]
+		}
+	}
+	return nil
+}
