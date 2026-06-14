@@ -584,8 +584,9 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <div class="field"><label>测速域名</label><input id="setSpeedHost" placeholder="speed.cloudflare.com"></div>
 <div class="field"><label>测速路径</label><input id="setSpeedPath" placeholder="/__down"></div>
 <div class="field"><label>每次下载字节数</label><input id="setSpeedBytes" type="number" min="4096" max="4194304" step="4096"></div>
+<div class="field"><label>短名单数量</label><input id="setSpeedTopN" type="number" min="1" max="20" step="1"></div>
 </div>
-<div class="small">每个候选 IP 会直连该 IP 的 443 端口，SNI/Host 使用 speed.cloudflare.com，请求 /__down?bytes=N。</div>
+<div class="small">先按基础延迟、丢包、抖动和路由评分筛出短名单，再直连这些 IP 的 443 端口，SNI/Host 使用 speed.cloudflare.com，请求 /__down?bytes=N。</div>
 </section>
 <section id="settings-dns" class="settings-pane" style="display:none">
 <label class="check-row"><input id="setDnsEnabled" type="checkbox"> 启用 Cloudflare DNS 动态解析</label>
@@ -830,6 +831,10 @@ function sortRenderedRows(){
  const body=document.getElementById('rows');
  const trs=[...body.querySelectorAll('tr')];
  trs.sort((a,b)=>{
+   if(sortState.key==='score'){
+     const as=Number(a.dataset.speedok||0), bs=Number(b.dataset.speedok||0);
+     if(as!==bs){ return bs-as; }
+   }
    const av=a.dataset[sortState.key]??'';
    const bv=b.dataset[sortState.key]??'';
    const an=Number(av), bn=Number(bv);
@@ -856,7 +861,7 @@ function candidateRow(c,last){
    ? (source+'：'+colo+'，TLS '+fmt(c.avg_rtt_ms||0)+'ms；ICMP '+routeRegion+(hint?'，'+hint:''))
    : ((source&&source!=='-'?source+'：':'')+(hint||decisionLabel(c.route_error||c.error)||'-'));
  const pingText=skipped?'-':(c.ping_rtt_ms>0?fmt(c.ping_rtt_ms):(c.ping_error?'失败':'-'));
- const attrs=rowAttrs({ip:ipValue(c.ip),stage:stageLabel(c.stage),segment:c.segment||'',region,hint:reason,cf_speed:skipped?999999:(c.cf_speed_rtt_ms||999999),cf_mbps:skipped?0:(c.cf_speed_mbps||0),colo,ping:skipped?999999:(c.ping_rtt_ms>0?c.ping_rtt_ms:999999),pingloss:skipped?999999:(c.ping_loss_rate||0),rtt:skipped?999999:(c.avg_rtt_ms||0),jitter:skipped?999999:(c.jitter_ms||0),loss:skipped?999999:(c.loss_rate||0),spike:skipped?999999:(c.spike_rate||0),score:skipped?999999:(Number.isFinite(c.score)?c.score:999999)});
+ const attrs=rowAttrs({ip:ipValue(c.ip),stage:stageLabel(c.stage),segment:c.segment||'',region,hint:reason,speedok:(c.cf_speed_rtt_ms>0&&!c.cf_speed_error)?1:0,cf_speed:skipped?999999:(c.cf_speed_rtt_ms||999999),cf_mbps:skipped?0:(c.cf_speed_mbps||0),colo,ping:skipped?999999:(c.ping_rtt_ms>0?c.ping_rtt_ms:999999),pingloss:skipped?999999:(c.ping_loss_rate||0),rtt:skipped?999999:(c.avg_rtt_ms||0),jitter:skipped?999999:(c.jitter_ms||0),loss:skipped?999999:(c.loss_rate||0),spike:skipped?999999:(c.spike_rate||0),score:skipped?999999:(Number.isFinite(c.score)?c.score:999999)});
  return '<tr class="'+klass+'"'+attrs+' title="'+attr(c.ping_error||c.cf_speed_error||'')+'"><td>'+c.ip+'</td><td>'+stageLabel(c.stage)+'</td><td>'+(c.segment||'-')+'</td><td>'+region+'</td><td>'+reason+'</td><td>'+speedText+'</td><td>'+speedMbps+'</td><td>'+colo+'</td><td>'+pingText+'</td><td>'+(skipped?'-':pct(c.ping_loss_rate))+'</td><td>'+(skipped?'-':fmt(c.avg_rtt_ms||0))+'</td><td>'+(skipped?'-':fmt(c.jitter_ms||0))+'</td><td>'+(skipped?'-':pct(c.loss_rate))+'</td><td>'+(skipped?'-':pct(c.spike_rate))+'</td><td>'+score+'</td></tr>';
 }
 function stateRows(state){
@@ -870,12 +875,12 @@ function stateRows(state){
  for(const seg of segments){
    const hot=Object.values(seg.hot_ips||{}).sort((a,b)=>(a.score||9999)-(b.score||9999));
    for(const item of hot){
-     const attrs=rowAttrs({ip:ipValue(item.ip),stage:'热点',segment:seg.cidr,region:item.pop||'',hint:'',cf_speed:999999,cf_mbps:0,colo:'',ping:item.ping_rtt_ms||0,pingloss:item.ping_loss_rate||0,rtt:item.avg_rtt_ms||0,jitter:item.jitter_ms||0,loss:item.loss_rate||0,spike:item.spike_rate||0,score:item.score||0});
+     const attrs=rowAttrs({ip:ipValue(item.ip),stage:'热点',segment:seg.cidr,region:item.pop||'',hint:'',speedok:0,cf_speed:999999,cf_mbps:0,colo:'',ping:item.ping_rtt_ms||0,pingloss:item.ping_loss_rate||0,rtt:item.avg_rtt_ms||0,jitter:item.jitter_ms||0,loss:item.loss_rate||0,spike:item.spike_rate||0,score:item.score||0});
      rows.push('<tr class="hot"'+attrs+'><td>'+item.ip+'</td><td>热点</td><td>'+seg.cidr+'</td><td>'+item.pop+'</td><td>-</td><td>-</td><td>-</td><td>-</td><td>'+fmt(item.ping_rtt_ms||0)+'</td><td>'+pct(item.ping_loss_rate)+'</td><td>'+fmt(item.avg_rtt_ms||0)+'</td><td>'+fmt(item.jitter_ms||0)+'</td><td>'+pct(item.loss_rate)+'</td><td>'+pct(item.spike_rate)+'</td><td>'+fmt(item.score||0)+'</td></tr>');
    }
    const popText=Object.entries(seg.pop_counts||{}).map(([k,v])=>k+':'+v).join(' ');
    const stage=seg.promoted?'学习段':'学习中';
-   const attrs=rowAttrs({ip:seg.cidr,stage,segment:seg.carrier,region:popText,hint:'',cf_speed:999999,cf_mbps:0,colo:'',ping:999999,pingloss:999999,rtt:seg.avg_rtt_ms||0,jitter:999999,loss:seg.loss_rate||0,spike:seg.spike_rate||0,score:seg.preferred_rate||0});
+   const attrs=rowAttrs({ip:seg.cidr,stage,segment:seg.carrier,region:popText,hint:'',speedok:0,cf_speed:999999,cf_mbps:0,colo:'',ping:999999,pingloss:999999,rtt:seg.avg_rtt_ms||0,jitter:999999,loss:seg.loss_rate||0,spike:seg.spike_rate||0,score:seg.preferred_rate||0});
    rows.push('<tr'+attrs+'><td>'+seg.cidr+'</td><td>'+stage+'</td><td>'+seg.carrier+'</td><td>'+popText+'</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>'+fmt(seg.avg_rtt_ms||0)+'</td><td>-</td><td>'+pct(seg.loss_rate)+'</td><td>'+pct(seg.spike_rate)+'</td><td>'+pct(seg.preferred_rate)+'</td></tr>');
  }
  return rows.join('');
@@ -921,6 +926,7 @@ function fillSettings(s){
  setSpeedHost.value=speed.host||'speed.cloudflare.com';
  setSpeedPath.value=speed.path||'/__down';
  setSpeedBytes.value=speed.bytes||262144;
+ setSpeedTopN.value=speed.top_n||5;
 }
 function addRecordRow(record={}){
  const row=document.createElement('div');
@@ -957,7 +963,8 @@ function collectSettings(){
      enabled:setSpeedEnabled.checked,
      host:setSpeedHost.value.trim()||'speed.cloudflare.com',
      path:setSpeedPath.value.trim()||'/__down',
-     bytes:Number(setSpeedBytes.value)||262144
+     bytes:Number(setSpeedBytes.value)||262144,
+     top_n:Number(setSpeedTopN.value)||5
    }
  };
 }

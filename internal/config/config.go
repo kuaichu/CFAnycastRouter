@@ -112,6 +112,7 @@ type SpeedTestConfig struct {
 	Host    string `yaml:"host" json:"host"`
 	Path    string `yaml:"path" json:"path"`
 	Bytes   int64  `yaml:"bytes" json:"bytes"`
+	TopN    int    `yaml:"top_n" json:"top_n"`
 }
 
 type ManageSettings struct {
@@ -178,6 +179,7 @@ func defaults() *Config {
 			Host:    "speed.cloudflare.com",
 			Path:    "/__down",
 			Bytes:   262144,
+			TopN:    5,
 		},
 	}
 }
@@ -382,6 +384,12 @@ func (c *Config) normalize() error {
 	}
 	if c.SpeedTest.Bytes > 4*1024*1024 {
 		c.SpeedTest.Bytes = 4 * 1024 * 1024
+	}
+	if c.SpeedTest.TopN <= 0 {
+		c.SpeedTest.TopN = 5
+	}
+	if c.SpeedTest.TopN > 20 {
+		c.SpeedTest.TopN = 20
 	}
 	for i := range c.Pools {
 		p := &c.Pools[i]
@@ -775,6 +783,7 @@ func upsertSpeedTest(mapping *yaml.Node, cfg SpeedTestConfig) {
 	addMapScalar(node, "host", cfg.Host, "!!str")
 	addMapScalar(node, "path", cfg.Path, "!!str")
 	addMapScalar(node, "bytes", fmt.Sprintf("%d", cfg.Bytes), "!!int")
+	addMapScalar(node, "top_n", fmt.Sprintf("%d", cfg.TopN), "!!int")
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
 		if mapping.Content[i].Value == "speed_test" {
 			mapping.Content[i+1] = node

@@ -64,6 +64,7 @@ speed_test:
   host: speed.cloudflare.com
   path: /__down
   bytes: 262144
+  top_n: 5
 seed_ips: []
 seed_cidrs:
   - 104.17.144.0/20

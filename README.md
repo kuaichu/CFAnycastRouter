@@ -53,7 +53,7 @@ seed_cidrs:
 ## 评分
 
 ```text
-score =
+base_score =
 avg_rtt
 + jitter * 0.5
 + loss_rate * 500
@@ -65,6 +65,14 @@ avg_rtt
 ```
 
 `loss_rate` 和 `spike_rate` 是 0-1 小数。`HK / JP / SG` 不加 POP 惩罚，`US +100`，`EU +150`，`unknown` 且 RTT 大于 100ms 时 `+80`。
+
+如果启用了 `speed_test`，程序会先按基础分筛出前 `top_n` 个候选，再对这些 IP 直连 Cloudflare 官方测速源：
+
+```text
+https://speed.cloudflare.com/__down?bytes=N
+```
+
+测速请求会连接候选 IP 的 443 端口，但 SNI/Host 使用 `speed.cloudflare.com`。完成测速的短名单候选会用下载耗时、抖动和失败率重新排序；其余候选只作为兜底。
 
 ## 漂移检测
 

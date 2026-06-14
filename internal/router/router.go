@@ -56,6 +56,7 @@ type Candidate struct {
 	CFSpeedJitterMs float64 `json:"cf_speed_jitter_ms,omitempty"`
 	CFSpeedLossRate float64 `json:"cf_speed_loss_rate,omitempty"`
 	CFSpeedMbps     float64 `json:"cf_speed_mbps,omitempty"`
+	CFSpeedTested   bool    `json:"cf_speed_tested,omitempty"`
 	CFSpeedError    string  `json:"cf_speed_error,omitempty"`
 	PingRTTMs       float64 `json:"ping_rtt_ms"`
 	PingLossRate    float64 `json:"ping_loss_rate"`
@@ -113,6 +114,8 @@ func (r *Router) Evaluate() []Candidate {
 	now := time.Now()
 	candidates := r.probeTargets(discover.Targets(r.cfg, r.state), now)
 	sortCandidates(candidates)
+	r.applySpeedShortlist(candidates)
+	sortCandidates(candidates)
 	return candidates
 }
 
@@ -123,6 +126,8 @@ func (r *Router) Cycle() (*CycleResult, error) {
 		return nil, fmt.Errorf("no scan targets available")
 	}
 	candidates := r.probeTargets(targets, now)
+	sortCandidates(candidates)
+	r.applySpeedShortlist(candidates)
 	sortCandidates(candidates)
 	result := &CycleResult{
 		Time:       now,
@@ -414,28 +419,10 @@ func (r *Router) probeOne(c Candidate, now time.Time, routeUsed *int64, routeBud
 	c.RouteConfidence = route.Confidence
 	c.RouteError = route.Error
 	c.Region, c.RegionSource = effectiveRegion(c.RouteRegion, c.CFRegion, c.PingRTTMs, c.AvgRTTMs)
-	speed := r.cfSpeed(c.IP)
-	c.CFSpeedRTTMs = speed.AvgRTTMs
-	c.CFSpeedJitterMs = speed.JitterMs
-	c.CFSpeedLossRate = speed.LossRate
-	if speed.Successes > 0 && speed.AvgRTTMs > 0 && r.cfg.SpeedTest.Bytes > 0 {
-		c.CFSpeedMbps = float64(r.cfg.SpeedTest.Bytes*8) / (c.CFSpeedRTTMs / 1000.0) / 1000000.0
-	}
-	if speed.Successes == 0 && r.cfg.SpeedTest.Enabled {
-		c.CFSpeedError = speed.LastError
-	}
 	if c.Region == "" {
 		c.Region = "unknown"
 	}
-	scoreRTT := c.AvgRTTMs
-	scoreJitter := c.JitterMs
-	scoreLoss := c.LossRate
-	if r.cfg.SpeedTest.Enabled && c.CFSpeedRTTMs > 0 {
-		scoreRTT = c.CFSpeedRTTMs
-		scoreJitter = c.CFSpeedJitterMs
-		scoreLoss = c.CFSpeedLossRate
-	}
-	c.PopPenalty = popPenalty(c.Region, scoreRTT)
+	c.PopPenalty = popPenalty(c.Region, c.AvgRTTMs)
 	if !tr.OK {
 		c.HijackPenalty = r.cfg.HijackPenalty
 	}
@@ -449,7 +436,7 @@ func (r *Router) probeOne(c Candidate, now time.Time, routeUsed *int64, routeBud
 			r.stateMu.Unlock()
 		}
 	}
-	c.Score = scoreRTT + scoreJitter*0.5 + scoreLoss*500 + c.SpikeRate*80 + c.PopPenalty + c.DriftPenalty + c.HijackPenalty - c.LearnedBonus
+	c.Score = c.AvgRTTMs + c.JitterMs*0.5 + c.LossRate*500 + c.SpikeRate*80 + c.PopPenalty + c.DriftPenalty + c.HijackPenalty - c.LearnedBonus
 	r.stateMu.Lock()
 	oldPOP, changed := r.state.Record(c.IP, c.Carrier, c.Region, now, c.AvgRTTMs, c.JitterMs, c.LossRate, c.SpikeRate, c.Score)
 	if changed {
@@ -497,6 +484,54 @@ func (r *Router) ping(ip string) probe.Result {
 		defer func() { <-r.pingSem }()
 	}
 	return probe.ICMP(ip, r.cfg.ProbeAttempts, r.cfg.ProbeTimeout)
+}
+
+func (r *Router) applySpeedShortlist(candidates []Candidate) {
+	if !r.cfg.SpeedTest.Enabled || r.cfg.SpeedTest.TopN <= 0 {
+		return
+	}
+	var selected []int
+	for i := range candidates {
+		if len(selected) >= r.cfg.SpeedTest.TopN {
+			break
+		}
+		if candidates[i].Error != "" || candidates[i].Quarantined || candidates[i].Region == "" || candidates[i].Region == "unknown" || math.IsInf(candidates[i].Score, 0) {
+			continue
+		}
+		selected = append(selected, i)
+	}
+	var wg sync.WaitGroup
+	wg.Add(len(selected))
+	for _, idx := range selected {
+		go func(i int) {
+			defer wg.Done()
+			speed := r.cfSpeed(candidates[i].IP)
+			applySpeedResult(&candidates[i], speed, r.cfg.SpeedTest.Bytes)
+			if r.progress != nil {
+				r.progress(candidates[i])
+			}
+		}(idx)
+	}
+	wg.Wait()
+}
+
+func applySpeedResult(c *Candidate, speed probe.Result, bytes int64) {
+	c.CFSpeedTested = true
+	c.CFSpeedRTTMs = speed.AvgRTTMs
+	c.CFSpeedJitterMs = speed.JitterMs
+	c.CFSpeedLossRate = speed.LossRate
+	if speed.Successes > 0 && speed.AvgRTTMs > 0 && bytes > 0 {
+		c.CFSpeedMbps = float64(bytes*8) / (c.CFSpeedRTTMs / 1000.0) / 1000000.0
+		c.CFSpeedError = ""
+		c.PopPenalty = popPenalty(c.Region, c.CFSpeedRTTMs)
+		c.Score = c.CFSpeedRTTMs + c.CFSpeedJitterMs*0.5 + c.CFSpeedLossRate*500 + c.SpikeRate*80 + c.PopPenalty + c.DriftPenalty + c.HijackPenalty - c.LearnedBonus
+		return
+	}
+	c.CFSpeedError = speed.LastError
+	if c.CFSpeedError == "" {
+		c.CFSpeedError = "cloudflare speed test failed"
+	}
+	c.Score = math.Inf(1)
 }
 
 func (r *Router) cfSpeed(ip string) probe.Result {
@@ -627,6 +662,9 @@ func firstHealthyInRouteRegionForType(candidates []Candidate, region, recordType
 }
 
 func dnsRouteScore(c Candidate) float64 {
+	if c.CFSpeedRTTMs > 0 {
+		return c.CFSpeedRTTMs + c.CFSpeedLossRate*800 + c.SpikeRate*80
+	}
 	rtt := c.PingRTTMs
 	if rtt <= 0 {
 		rtt = c.AvgRTTMs
@@ -640,6 +678,11 @@ func dnsRouteScore(c Candidate) float64 {
 func sortCandidates(candidates []Candidate) {
 	sort.Slice(candidates, func(i, j int) bool {
 		a, b := candidates[i], candidates[j]
+		aSpeedOK := a.CFSpeedTested && a.CFSpeedRTTMs > 0 && a.CFSpeedError == ""
+		bSpeedOK := b.CFSpeedTested && b.CFSpeedRTTMs > 0 && b.CFSpeedError == ""
+		if aSpeedOK != bSpeedOK {
+			return aSpeedOK
+		}
 		if math.IsInf(a.Score, 0) && math.IsInf(b.Score, 0) {
 			return a.IP < b.IP
 		}
