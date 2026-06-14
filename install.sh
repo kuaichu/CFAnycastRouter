@@ -81,8 +81,19 @@ else
 fi
 
 cd "$INSTALL_DIR"
-go mod download
-go build -o "$BIN_PATH" .
+
+export GOPROXY="${GOPROXY:-https://goproxy.cn,https://proxy.golang.org,direct}"
+export GOSUMDB="${GOSUMDB:-sum.golang.google.cn}"
+echo "Using GOPROXY=$GOPROXY"
+echo "Using GOSUMDB=$GOSUMDB"
+if ! go mod download; then
+  echo "go mod download failed; retrying with GOSUMDB=off" >&2
+  GOSUMDB=off go mod download
+fi
+if ! go build -o "$BIN_PATH" .; then
+  echo "go build failed; retrying with GOSUMDB=off" >&2
+  GOSUMDB=off go build -o "$BIN_PATH" .
+fi
 
 cat > "$CONFIG_DIR/agent.yaml" <<EOF
 probe_source: "$PROBE_SOURCE"
