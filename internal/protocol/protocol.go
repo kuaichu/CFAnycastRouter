@@ -9,6 +9,8 @@ import (
 
 type AgentAssignment struct {
 	ServerTime                   time.Time              `json:"server_time"`
+	ProbeSource                  string                 `json:"probe_source"`
+	Carrier                      string                 `json:"carrier"`
 	TraceHost                    string                 `json:"trace_host"`
 	TracePath                    string                 `json:"trace_path"`
 	ProbePort                    int                    `json:"probe_port"`
@@ -36,6 +38,13 @@ type AgentAssignment struct {
 	SpeedTest                    config.SpeedTestConfig `json:"speed_test"`
 }
 
+type AgentConfig struct {
+	AgentID     string `json:"agent_id"`
+	DisplayName string `json:"display_name"`
+	ProbeSource string `json:"probe_source"`
+	Carrier     string `json:"carrier"`
+}
+
 type AgentReport struct {
 	AgentID     string              `json:"agent_id"`
 	Hostname    string              `json:"hostname"`
@@ -47,9 +56,11 @@ type AgentReport struct {
 
 type AgentSnapshot struct {
 	AgentID        string              `json:"agent_id"`
+	DisplayName    string              `json:"display_name"`
 	Hostname       string              `json:"hostname"`
 	ProbeSource    string              `json:"probe_source"`
 	Carrier        string              `json:"carrier"`
+	Managed        bool                `json:"managed"`
 	FirstSeen      time.Time           `json:"first_seen"`
 	LastSeen       time.Time           `json:"last_seen"`
 	CandidateCount int                 `json:"candidate_count"`

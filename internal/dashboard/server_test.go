@@ -195,3 +195,38 @@ func TestAgentHeartbeatPreservesLastMeasurement(t *testing.T) {
 		t.Fatalf("heartbeat discarded measurement: %#v", got)
 	}
 }
+
+func TestManagedAgentConfigurationOverridesReportedMetadata(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agents.json")
+	registry := newAgentRegistry(path)
+	configured, err := registry.configure(protocol.AgentConfig{
+		AgentID:     "vps-01",
+		DisplayName: "洛杉矶联通",
+		ProbeSource: "Los Angeles",
+		Carrier:     "cu",
+	})
+	if err != nil {
+		t.Fatalf("configure agent: %v", err)
+	}
+	if !configured.Managed || !configured.LastSeen.IsZero() {
+		t.Fatalf("unexpected configured snapshot: %#v", configured)
+	}
+
+	registry.upsert(protocol.AgentReport{
+		AgentID:     "vps-01",
+		Hostname:    "edge-host",
+		ProbeSource: "agent-local-value",
+		Carrier:     "ct",
+	})
+
+	got, ok := newAgentRegistry(path).get("vps-01")
+	if !ok {
+		t.Fatal("managed agent was not persisted")
+	}
+	if got.DisplayName != "洛杉矶联通" || got.ProbeSource != "Los Angeles" || got.Carrier != "cu" {
+		t.Fatalf("report overwrote managed metadata: %#v", got)
+	}
+	if got.Hostname != "edge-host" || got.FirstSeen.IsZero() || got.LastSeen.IsZero() {
+		t.Fatalf("report metadata was not recorded: %#v", got)
+	}
+}

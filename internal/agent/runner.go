@@ -162,6 +162,12 @@ func (r *Runner) authorize(req *http.Request) {
 }
 
 func (r *Runner) applyAssignment(a protocol.AgentAssignment) {
+	if a.ProbeSource != "" {
+		r.cfg.ProbeSource = a.ProbeSource
+	}
+	if a.Carrier != "" {
+		r.cfg.Carrier = config.NormalizeCarrier(a.Carrier)
+	}
 	if a.TraceHost != "" {
 		r.cfg.TraceHost = a.TraceHost
 	}

@@ -2,6 +2,7 @@ package dashboard
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -44,11 +45,25 @@ func (r *agentRegistry) upsert(report protocol.AgentReport) protocol.AgentSnapsh
 	if result == nil && exists {
 		result = existing.Result
 	}
+	probeSource := strings.TrimSpace(report.ProbeSource)
+	carrier := config.NormalizeCarrier(report.Carrier)
+	displayName := ""
+	managed := false
+	if exists {
+		displayName = existing.DisplayName
+		managed = existing.Managed
+		if managed {
+			probeSource = existing.ProbeSource
+			carrier = existing.Carrier
+		}
+	}
 	snapshot := protocol.AgentSnapshot{
 		AgentID:     report.AgentID,
+		DisplayName: displayName,
 		Hostname:    report.Hostname,
-		ProbeSource: report.ProbeSource,
-		Carrier:     report.Carrier,
+		ProbeSource: probeSource,
+		Carrier:     carrier,
+		Managed:     managed,
 		FirstSeen:   firstSeen,
 		LastSeen:    now,
 		Result:      result,
@@ -63,6 +78,37 @@ func (r *agentRegistry) upsert(report protocol.AgentReport) protocol.AgentSnapsh
 	r.agents[report.AgentID] = snapshot
 	r.saveLocked()
 	return snapshot
+}
+
+func (r *agentRegistry) configure(input protocol.AgentConfig) (protocol.AgentSnapshot, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	input.AgentID = strings.TrimSpace(input.AgentID)
+	if input.AgentID == "" {
+		return protocol.AgentSnapshot{}, fmt.Errorf("agent_id is required")
+	}
+	input.DisplayName = strings.TrimSpace(input.DisplayName)
+	input.ProbeSource = strings.TrimSpace(input.ProbeSource)
+	input.Carrier = config.NormalizeCarrier(input.Carrier)
+	if input.Carrier == "auto" {
+		input.Carrier = config.InferCarrier(input.ProbeSource)
+	}
+	snapshot := r.agents[input.AgentID]
+	snapshot.AgentID = input.AgentID
+	snapshot.DisplayName = input.DisplayName
+	snapshot.ProbeSource = input.ProbeSource
+	snapshot.Carrier = input.Carrier
+	snapshot.Managed = true
+	r.agents[input.AgentID] = snapshot
+	r.saveLocked()
+	return snapshot, nil
+}
+
+func (r *agentRegistry) get(agentID string) (protocol.AgentSnapshot, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	snapshot, ok := r.agents[strings.TrimSpace(agentID)]
+	return snapshot, ok
 }
 
 func (r *agentRegistry) remove(agentID string) bool {
@@ -148,6 +194,20 @@ func (r *agentRegistry) candidatesByCarrier(carrier string, maxAge time.Duration
 }
 
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost || r.Method == http.MethodPut {
+		var input protocol.AgentConfig
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeJSON(w, map[string]string{"error": "invalid JSON: " + err.Error()})
+			return
+		}
+		snapshot, err := s.agents.configure(input)
+		if err != nil {
+			writeJSON(w, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true, "agent": snapshot})
+		return
+	}
 	if r.Method == http.MethodDelete {
 		agentID := strings.TrimSpace(r.URL.Query().Get("id"))
 		if agentID == "" {
@@ -173,7 +233,12 @@ func (s *Server) handleAgentConfig(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, assignmentFromConfig(cfg))
+	assignment := assignmentFromConfig(cfg)
+	if snapshot, ok := s.agents.get(r.URL.Query().Get("agent_id")); ok && snapshot.Managed {
+		assignment.ProbeSource = snapshot.ProbeSource
+		assignment.Carrier = snapshot.Carrier
+	}
+	writeJSON(w, assignment)
 }
 
 func (s *Server) handleAgentReport(w http.ResponseWriter, r *http.Request) {
@@ -197,7 +262,7 @@ func (s *Server) handleAgentReport(w http.ResponseWriter, r *http.Request) {
 	snapshot := s.agents.upsert(report)
 	if report.Result != nil {
 		s.SetLast(report.Result)
-		go s.updateAgentDNS(report.Carrier)
+		go s.updateAgentDNS(snapshot.Carrier)
 	}
 	writeJSON(w, map[string]any{"ok": true, "agent": snapshot})
 }

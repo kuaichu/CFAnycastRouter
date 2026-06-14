@@ -649,10 +649,13 @@ button.ghost{background:transparent}button.danger{background:#3a151a;border-colo
 .record-row input,.record-row select{background:#071018;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px}
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}
 .icon-btn{width:36px;height:36px;padding:0;display:grid;place-items:center}
-.agent-summary{display:flex;gap:18px;align-items:center;margin-bottom:10px;color:var(--muted)}
+.agent-manage-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.agent-summary{display:flex;gap:18px;align-items:center;color:var(--muted)}
 .agent-summary strong{color:var(--text);font-size:18px;margin-right:4px}.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;background:var(--muted)}
 .status-dot.online{background:var(--ok);box-shadow:0 0 0 3px rgba(54,211,153,.12)}.status-dot.offline{background:var(--bad)}
-.agent-manage-table{margin-top:10px}.agent-manage-table td:last-child,.agent-manage-table th:last-child{text-align:right}.agent-manage-table button{padding:5px 9px}
+.agent-manage-list{display:grid;gap:12px}.agent-editor{border:1px solid #315064;border-radius:8px;padding:16px;background:rgba(7,16,24,.42)}
+.agent-editor-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}.agent-editor-title{font-weight:700;font-size:15px}.agent-editor-status{color:var(--muted);font-size:12px;margin-top:3px}
+.agent-editor-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}.agent-editor .field input,.agent-editor .field select{border-radius:7px;padding:10px 12px}.agent-editor .field input[readonly]{color:#9dabbc;background:#0c141d}
+.agent-editor-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}.agent-editor-meta{color:var(--muted);font-size:12px;min-width:0}.agent-editor-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.agent-empty{border:1px dashed #315064;border-radius:8px;padding:24px;text-align:center;color:var(--muted)}
 .section-title{margin:20px 0 8px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
 .final-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
 .final-table{margin-top:10px;table-layout:fixed}.final-table th,.final-table td{padding:8px 10px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
@@ -664,7 +667,7 @@ button.ghost{background:transparent}button.danger{background:#3a151a;border-colo
 table{width:100%;border-collapse:collapse;margin-top:16px;background:var(--panel);border:1px solid var(--line)}
 th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;font-variant-numeric:tabular-nums}
 th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--text)}th.sortable.active{color:var(--ok)}tr.best td{color:var(--ok)}tr.bad td{color:var(--bad)}tr.hot td{color:var(--ok)}
-@media(max-width:800px){.grid,.settings,.form-grid,.final-grid{grid-template-columns:1fr}.record-row{grid-template-columns:1fr 1fr}.record-row input:nth-child(3){grid-column:1/-1}main{padding:18px}th:nth-child(4),td:nth-child(4),th:nth-child(8),td:nth-child(8){display:none}}
+@media(max-width:800px){.grid,.settings,.form-grid,.final-grid,.agent-editor-grid{grid-template-columns:1fr}.record-row{grid-template-columns:1fr 1fr}.record-row input:nth-child(3){grid-column:1/-1}main{padding:18px}.agent-manage-head,.agent-editor-foot{align-items:stretch;flex-direction:column}.agent-editor-actions{justify-content:flex-start}th:nth-child(4),td:nth-child(4),th:nth-child(8),td:nth-child(8){display:none}}
 </style>
 </head>
 <body><main>
@@ -743,8 +746,9 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <div id="agentInstallMsg" class="small">在 VPS 上用 root 或 sudo 执行；安装后会创建 systemd 服务并主动上报。</div>
 </section>
 <section id="settings-agents" class="settings-pane" style="display:none">
-<div id="agentManageSummary" class="agent-summary"><span><strong>0</strong>节点</span><span><strong>0</strong>在线</span></div>
-<table class="agent-manage-table"><thead><tr><th>状态</th><th>Agent</th><th>运营商</th><th>首次注册</th><th>最后上报</th><th>最佳 IP / 地区</th><th>候选</th><th>操作</th></tr></thead><tbody id="agentManageRows"><tr><td colspan="8">等待 Agent 上报</td></tr></tbody></table>
+<div class="agent-manage-head"><div><div class="k">预期在线 Agent</div><div id="agentManageSummary" class="agent-summary"><span><strong>0</strong>节点</span><span><strong>0</strong>在线</span></div></div><button class="primary" onclick="addAgentDraft()">＋ 新增 Agent</button></div>
+<div id="agentManageList" class="agent-manage-list" oninput="agentEditorDirty=true" onchange="agentEditorDirty=true"><div class="agent-empty">尚未配置 Agent</div></div>
+<div class="small">母鸡端配置优先于 Agent 本地配置。保存后，在线 Agent 会在下一轮拉取任务时采用新的地区和运营商。</div>
 </section>
 <div id="settingsMsg" class="small"></div>
 <div class="modal-actions"><button onclick="closeSettings()">关闭</button><button id="saveSettingsBtn" class="primary" onclick="saveSettings()">保存设置</button></div>
@@ -1035,6 +1039,8 @@ let settingsCache=null;
 let controlCache=null;
 let fullStateCache=null;
 let agentsCache=[];
+let agentDrafts=[];
+let agentEditorDirty=false;
 let modalScrollY=0;
 function switchSettingsTab(tab){
  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));
@@ -1051,6 +1057,7 @@ async function openSettings(){
  if(res.error){ settingsMsg.textContent=res.error; return; }
  settingsCache=res;
  fillSettings(res);
+ renderAgentManagement(agentsCache,true);
  settingsMsg.textContent='';
 }
 function closeSettings(){
@@ -1058,6 +1065,7 @@ function closeSettings(){
  settingsModal.classList.remove('open');
  document.body.classList.remove('modal-open');
  document.body.style.top='';
+ agentEditorDirty=false;
  window.scrollTo(0,modalScrollY);
 }
 function shellQuote(v){
@@ -1186,32 +1194,94 @@ function agentOnline(a){
  const threshold=Math.max(Number(settingsCache?.check_interval_seconds||300)*2000,180000);
  return seen>0&&Date.now()-seen<=threshold;
 }
-function renderAgentManagement(list){
+function carrierLabel(value){ return ({cu:'中国联通',ct:'中国电信',cm:'中国移动',unknown:'未知'})[value]||value||'未知'; }
+function carrierOptions(value){
+ return ['cu','ct','cm','unknown'].map(v=>'<option value="'+v+'"'+(v===value?' selected':'')+'>'+carrierLabel(v)+'</option>').join('');
+}
+function agentEditorHTML(a,index,isDraft){
+ const online=agentOnline(a);
+ const best=a.best||{};
+ const agentID=escapeHTML(a.agent_id||'');
+ const title=escapeHTML(a.display_name||a.agent_id||('Agent '+index));
+ const host=a.hostname?' · 主机 '+escapeHTML(a.hostname):'';
+ const seen=a.last_seen?new Date(a.last_seen).toLocaleString():'尚未上报';
+ const bestText=best.ip?('最佳 '+escapeHTML(best.ip)+' / '+escapeHTML(best.route_region||best.region||'-')):'暂无测速结果';
+ return '<article class="agent-editor" data-agent-id="'+attr(a.agent_id||'')+'" data-draft-id="'+attr(a._draft_id||'')+'">'
+  +'<div class="agent-editor-head"><div><div class="agent-editor-title">'+title+'</div><div class="agent-editor-status"><span class="status-dot '+(online?'online':'offline')+'"></span>'+(online?'在线':'离线')+host+'</div></div><button class="danger" onclick="removeAgentEditor(this)">'+(isDraft?'取消':'删除')+'</button></div>'
+  +'<div class="agent-editor-grid">'
+  +'<div class="field"><label>Agent ID</label><input data-field="agent_id" value="'+agentID+'" '+(isDraft?'':'readonly')+' placeholder="例如 hz-cu-01"><div class="small">安装脚本使用同一个 ID；已创建后不可直接改名。</div></div>'
+  +'<div class="field"><label>显示名</label><input data-field="display_name" value="'+escapeHTML(a.display_name||'')+'" placeholder="例如 杭州联通入口"></div>'
+  +'<div class="field"><label>地区 / 探测源</label><input data-field="probe_source" value="'+escapeHTML(a.probe_source||'')+'" placeholder="例如 宁波联通、洛杉矶机房"></div>'
+  +'<div class="field"><label>运营商</label><select data-field="carrier">'+carrierOptions(a.carrier||'unknown')+'</select></div>'
+  +'</div><div class="agent-editor-foot"><div class="agent-editor-meta">最后上报：'+seen+' · '+bestText+' · 候选 '+(a.candidate_count||0)+'</div><div class="agent-editor-actions"><button onclick="prepareAgentInstall(this)">带入安装页</button><button class="primary" onclick="saveAgentConfig(this)">保存 Agent</button></div></div></article>';
+}
+function renderAgentManagement(list,force){
+ if(agentEditorDirty&&!force){ return; }
  const online=list.filter(agentOnline).length;
  agentManageSummary.innerHTML='<span><strong>'+list.length+'</strong>节点</span><span><strong>'+online+'</strong>在线</span>';
- if(!list.length){
-   agentManageRows.innerHTML='<tr><td colspan="8">尚无 Agent 上报。安装后通常会在一个检测周期内出现。</td></tr>';
+ const all=list.map(a=>({agent:a,draft:false})).concat(agentDrafts.map(a=>({agent:a,draft:true})));
+ if(!all.length){
+   agentManageList.innerHTML='<div class="agent-empty">尚未配置 Agent。先新增节点，再将生成的安装命令放到 VPS 执行。</div>';
    return;
  }
- agentManageRows.innerHTML=list.map(a=>{
-   const best=a.best||{};
-   const online=agentOnline(a);
-   const id=escapeHTML(a.agent_id||'-');
-   const host=a.hostname&&a.hostname!==a.agent_id?' / '+escapeHTML(a.hostname):'';
-   const first=a.first_seen?new Date(a.first_seen).toLocaleString():'-';
-   const seen=a.last_seen?new Date(a.last_seen).toLocaleString():'-';
-   const bestText=escapeHTML(best.ip||'-')+' / '+escapeHTML(best.route_region||best.region||'-');
-   return '<tr><td><span class="status-dot '+(online?'online':'offline')+'"></span>'+(online?'在线':'离线')+'</td><td>'+id+host+'</td><td>'+escapeHTML(a.carrier||'-')+'</td><td>'+first+'</td><td>'+seen+'</td><td>'+bestText+'</td><td>'+(a.candidate_count||0)+'</td><td><button class="danger" data-agent="'+attr(a.agent_id||'')+'" onclick="removeAgentRecord(this.dataset.agent)">清除记录</button></td></tr>';
- }).join('');
+ agentManageList.innerHTML=all.map((item,i)=>agentEditorHTML(item.agent,i+1,item.draft)).join('');
+}
+function addAgentDraft(){
+ const suffix=Math.random().toString(36).slice(2,8);
+ agentDrafts.push({_draft_id:suffix,agent_id:'agent-'+suffix,display_name:'',probe_source:'',carrier:'unknown'});
+ agentEditorDirty=true;
+ renderAgentManagement(agentsCache,true);
+ const cards=agentManageList.querySelectorAll('.agent-editor');
+ cards[cards.length-1]?.scrollIntoView({block:'nearest',behavior:'smooth'});
+}
+function readAgentEditor(button){
+ const card=button.closest('.agent-editor');
+ const value=name=>card.querySelector('[data-field="'+name+'"]').value.trim();
+ return {card,config:{agent_id:value('agent_id'),display_name:value('display_name'),probe_source:value('probe_source'),carrier:value('carrier')}};
+}
+async function saveAgentConfig(button){
+ const {card,config}=readAgentEditor(button);
+ if(!config.agent_id){ settingsMsg.textContent='Agent ID 不能为空'; return; }
+ button.disabled=true;
+ settingsMsg.textContent='正在保存 '+config.agent_id+'...';
+ const res=await fetch('/api/agents',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(config)}).then(r=>r.json()).catch(e=>({error:e.message}));
+ button.disabled=false;
+ if(res.error){ settingsMsg.textContent=res.error; return; }
+ agentDrafts=agentDrafts.filter(a=>a._draft_id!==card.dataset.draftId);
+ const pos=agentsCache.findIndex(a=>a.agent_id===res.agent.agent_id);
+ if(pos>=0){ agentsCache[pos]=res.agent; }else{ agentsCache.push(res.agent); }
+ agentEditorDirty=false;
+ renderAgentManagement(agentsCache,true);
+ renderAgents({agents:agentsCache});
+ settingsMsg.textContent='已保存 '+config.agent_id+'，在线节点下一轮自动生效';
+}
+function prepareAgentInstall(button){
+ const {config}=readAgentEditor(button);
+ agentInstallID.value=config.agent_id||'vps-01';
+ agentInstallCarrier.value=config.carrier||'unknown';
+ updateAgentInstallCommand();
+ switchSettingsTab('agent');
+ agentInstallMsg.textContent='已带入 '+agentInstallID.value+'；复制命令到对应 VPS 执行。';
+}
+function removeAgentEditor(button){
+ const card=button.closest('.agent-editor');
+ if(card.dataset.draftId){
+   agentDrafts=agentDrafts.filter(a=>a._draft_id!==card.dataset.draftId);
+   agentEditorDirty=false;
+   renderAgentManagement(agentsCache,true);
+   return;
+ }
+ removeAgentRecord(card.dataset.agentId);
 }
 async function removeAgentRecord(agentID){
- if(!agentID||!confirm('清除 Agent '+agentID+' 的母鸡记录？运行中的 Agent 下次上报时会自动重新注册。')){ return; }
+ if(!agentID||!confirm('删除 Agent '+agentID+'？运行中的 Agent 下次上报时会作为未托管节点重新出现。')){ return; }
  const res=await fetch('/api/agents?id='+encodeURIComponent(agentID),{method:'DELETE'}).then(r=>r.json()).catch(e=>({error:e.message}));
  if(res.error){ settingsMsg.textContent=res.error; return; }
  agentsCache=agentsCache.filter(a=>a.agent_id!==agentID);
- renderAgentManagement(agentsCache);
+ agentEditorDirty=false;
+ renderAgentManagement(agentsCache,true);
  renderAgents({agents:agentsCache});
- settingsMsg.textContent=res.removed?'已清除 '+agentID+' 的记录':'未找到 '+agentID;
+ settingsMsg.textContent=res.removed?'已删除 '+agentID:'未找到 '+agentID;
 }
 function renderAgents(payload){
  const list=(payload&&payload.agents)||[];
@@ -1224,7 +1294,7 @@ function renderAgents(payload){
  agentRows.innerHTML=list.map(a=>{
    const best=a.best||{};
    const seen=a.last_seen?new Date(a.last_seen).toLocaleString():'-';
-   const id=[a.agent_id,a.hostname&&a.hostname!==a.agent_id?a.hostname:''].filter(Boolean).map(escapeHTML).join(' / ');
+   const id=[a.display_name||a.agent_id,a.hostname&&a.hostname!==a.agent_id?a.hostname:''].filter(Boolean).map(escapeHTML).join(' / ');
    return '<tr><td>'+id+'</td><td>'+escapeHTML(a.probe_source||'-')+'</td><td>'+escapeHTML(a.carrier||'-')+'</td><td>'+seen+'</td><td>'+(a.candidate_count||0)+'</td><td>'+escapeHTML(best.ip||'-')+'</td><td>'+escapeHTML(best.region||best.route_region||'-')+'</td><td>'+(Number.isFinite(best.score)?best.score.toFixed(1):'-')+'</td></tr>';
  }).join('');
 }
