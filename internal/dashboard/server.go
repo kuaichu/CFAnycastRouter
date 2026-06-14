@@ -125,6 +125,7 @@ func (s *Server) Start() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/install.sh", s.handleInstallScript)
+	mux.HandleFunc("/download/", s.handleAgentBinary)
 	mux.HandleFunc("/source.tar.gz", s.handleSourceArchive)
 	mux.HandleFunc("/api/state", s.handleState)
 	mux.HandleFunc("/api/state-summary", s.handleStateSummary)
@@ -180,6 +181,25 @@ func (s *Server) handleInstallScript(w http.ResponseWriter, r *http.Request) {
 	defer f.Close()
 	w.Header().Set("Content-Type", "text/x-shellscript; charset=utf-8")
 	_, _ = io.Copy(w, f)
+}
+
+func (s *Server) handleAgentBinary(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimPrefix(r.URL.Path, "/download/")
+	switch name {
+	case "cf-router-linux-amd64", "cf-router-linux-arm64":
+	default:
+		http.NotFound(w, r)
+		return
+	}
+
+	path := filepath.Join(".", "dist", name)
+	if _, err := os.Stat(path); err != nil {
+		http.Error(w, "agent binary not found: "+err.Error(), http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
+	http.ServeFile(w, r, path)
 }
 
 func (s *Server) handleSourceArchive(w http.ResponseWriter, r *http.Request) {

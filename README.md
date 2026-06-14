@@ -123,14 +123,14 @@ $env:CFAR_AGENT_TOKEN="CHANGE_ME_SHARED_TOKEN"
 go run . server config.yaml
 ```
 
-VPS 一键安装 agent：
+VPS 一键安装 agent。脚本会按 CPU 架构直接下载预编译二进制，不需要在 Agent 机器安装 Go、Git 或现场编译：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/kuaichu/CFAnycastRouter/main/install.sh \
   | sudo bash -s -- --server http://10.0.0.234:19199 --id vps-hk-01 --carrier auto --token CHANGE_ME_SHARED_TOKEN
 ```
 
-母鸡启动后也会直接提供安装脚本和源码包，优先使用母鸡入口：
+母鸡启动后会直接提供安装脚本和 `amd64`/`arm64` 二进制，优先从母鸡下载；母鸡不可用时才回退到 GitHub：
 
 ```bash
 curl -fsSL http://10.0.0.234:19199/install.sh \

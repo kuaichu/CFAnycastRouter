@@ -3,6 +3,8 @@ package dashboard
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -78,5 +80,40 @@ func TestStateSummaryDoesNotReturnFullHistory(t *testing.T) {
 	}
 	if strings.Contains(body, `"profiles"`) {
 		t.Fatalf("summary leaked full profiles: %s", body)
+	}
+}
+
+func TestAgentBinaryDownload(t *testing.T) {
+	originalDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get working directory: %v", err)
+	}
+	root := filepath.Clean(filepath.Join(originalDir, "..", ".."))
+	if err := os.Chdir(root); err != nil {
+		t.Fatalf("change to repository root: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(originalDir); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	})
+
+	s := New(0, "", "", nil, nil, nil, nil, nil)
+	req := httptest.NewRequest(http.MethodHead, "/download/cf-router-linux-amd64", nil)
+	rec := httptest.NewRecorder()
+	s.handleAgentBinary(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Content-Length") == "" {
+		t.Fatal("download response is missing Content-Length")
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/download/../../config.yaml", nil)
+	rec = httptest.NewRecorder()
+	s.handleAgentBinary(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("invalid download status=%d want %d", rec.Code, http.StatusNotFound)
 	}
 }

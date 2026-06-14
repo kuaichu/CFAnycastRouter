@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="https://github.com/kuaichu/CFAnycastRouter.git"
 SERVER_URL="http://10.0.0.234:19199"
 AGENT_ID=""
 PROBE_SOURCE=""
 CARRIER="auto"
 TOKEN=""
-INSTALL_DIR="/opt/cf-anycast-router"
 CONFIG_DIR="/etc/cf-anycast-router"
 STATE_DIR="/var/lib/cf-anycast-router"
 BIN_PATH="/usr/local/bin/cf-router"
@@ -51,20 +49,20 @@ if [[ -z "$PROBE_SOURCE" ]]; then
 fi
 
 install_packages() {
-  if command -v curl >/dev/null 2>&1 && command -v tar >/dev/null 2>&1 && command -v go >/dev/null 2>&1; then
+  if command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1; then
     return
   fi
   if command -v apt-get >/dev/null 2>&1; then
     apt-get update
-    DEBIAN_FRONTEND=noninteractive apt-get install -y curl tar git golang-go ca-certificates
+    DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates
   elif command -v dnf >/dev/null 2>&1; then
-    dnf install -y curl tar git golang ca-certificates
+    dnf install -y curl ca-certificates
   elif command -v yum >/dev/null 2>&1; then
-    yum install -y curl tar git golang ca-certificates
+    yum install -y curl ca-certificates
   elif command -v apk >/dev/null 2>&1; then
-    apk add --no-cache curl tar git go ca-certificates
+    apk add --no-cache curl ca-certificates
   else
-    echo "No supported package manager found. Install curl, tar, git, and Go first." >&2
+    echo "No supported package manager found. Install curl or wget first." >&2
     exit 1
   fi
 }
@@ -72,39 +70,40 @@ install_packages() {
 install_packages
 
 mkdir -p "$CONFIG_DIR" "$STATE_DIR"
-SOURCE_URL="${SERVER_URL%/}/source.tar.gz"
-tmp_source="$(mktemp -t cfar-source.XXXXXX.tar.gz)"
-if curl -fsSL "$SOURCE_URL" -o "$tmp_source"; then
-  echo "Using mother source package: $SOURCE_URL"
-  rm -rf "$INSTALL_DIR"
-  mkdir -p "$INSTALL_DIR"
-  tar -xzf "$tmp_source" -C "$INSTALL_DIR"
-else
-  echo "Mother source package unavailable; falling back to GitHub: $REPO_URL" >&2
-  if [[ -d "$INSTALL_DIR/.git" ]]; then
-    git -C "$INSTALL_DIR" fetch --all --prune
-    git -C "$INSTALL_DIR" reset --hard origin/main
+
+case "$(uname -m)" in
+  x86_64|amd64) ARCH="amd64" ;;
+  aarch64|arm64) ARCH="arm64" ;;
+  *)
+    echo "Unsupported architecture: $(uname -m). Supported: amd64, arm64." >&2
+    exit 1
+    ;;
+esac
+
+download_file() {
+  local url="$1"
+  local output="$2"
+  if command -v curl >/dev/null 2>&1; then
+    curl -fL --retry 3 --connect-timeout 10 "$url" -o "$output"
   else
-    rm -rf "$INSTALL_DIR"
-    git clone "$REPO_URL" "$INSTALL_DIR"
+    wget -O "$output" "$url"
   fi
-fi
-rm -f "$tmp_source"
+}
 
-cd "$INSTALL_DIR"
+BINARY_NAME="cf-router-linux-$ARCH"
+PRIMARY_URL="${SERVER_URL%/}/download/$BINARY_NAME"
+FALLBACK_URL="https://raw.githubusercontent.com/kuaichu/CFAnycastRouter/main/dist/$BINARY_NAME"
+tmp_binary="$(mktemp -t cfar-agent.XXXXXX)"
 
-export GOPROXY="${GOPROXY:-https://goproxy.cn,https://proxy.golang.org,direct}"
-export GOSUMDB="${GOSUMDB:-sum.golang.google.cn}"
-echo "Using GOPROXY=$GOPROXY"
-echo "Using GOSUMDB=$GOSUMDB"
-if ! go mod download; then
-  echo "go mod download failed; retrying with GOSUMDB=off" >&2
-  GOSUMDB=off go mod download
+if download_file "$PRIMARY_URL" "$tmp_binary"; then
+  echo "Downloaded agent binary from mother: $PRIMARY_URL"
+else
+  echo "Mother binary unavailable; falling back to GitHub: $FALLBACK_URL" >&2
+  download_file "$FALLBACK_URL" "$tmp_binary"
 fi
-if ! go build -o "$BIN_PATH" .; then
-  echo "go build failed; retrying with GOSUMDB=off" >&2
-  GOSUMDB=off go build -o "$BIN_PATH" .
-fi
+
+install -m 0755 "$tmp_binary" "$BIN_PATH"
+rm -f "$tmp_binary"
 
 cat > "$CONFIG_DIR/agent.yaml" <<EOF
 probe_source: "$PROBE_SOURCE"
@@ -139,14 +138,15 @@ EnvironmentFile=-$CONFIG_DIR/agent.env
 ExecStart=$BIN_PATH agent $CONFIG_DIR/agent.yaml
 Restart=always
 RestartSec=10
-WorkingDirectory=$INSTALL_DIR
+WorkingDirectory=$STATE_DIR
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now cf-anycast-agent.service
+systemctl enable cf-anycast-agent.service
+systemctl restart cf-anycast-agent.service
 
 echo "CF Anycast Router agent installed."
 echo "Agent ID: $AGENT_ID"
