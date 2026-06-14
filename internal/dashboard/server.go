@@ -1189,8 +1189,13 @@ async function saveSettings(){
  setTimeout(closeSettings,700);
 }
 function escapeHTML(v){ return String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function agentSeenDate(value){
+ if(!value){ return null; }
+ const date=new Date(value);
+ return Number.isFinite(date.getTime())&&date.getFullYear()>2000?date:null;
+}
 function agentOnline(a){
- const seen=a?.last_seen?new Date(a.last_seen).getTime():0;
+ const seen=agentSeenDate(a?.last_seen)?.getTime()||0;
  const threshold=Math.max(Number(settingsCache?.check_interval_seconds||300)*2000,180000);
  return seen>0&&Date.now()-seen<=threshold;
 }
@@ -1204,7 +1209,8 @@ function agentEditorHTML(a,index,isDraft){
  const agentID=escapeHTML(a.agent_id||'');
  const title=escapeHTML(a.display_name||a.agent_id||('Agent '+index));
  const host=a.hostname?' · 主机 '+escapeHTML(a.hostname):'';
- const seen=a.last_seen?new Date(a.last_seen).toLocaleString():'尚未上报';
+ const seenDate=agentSeenDate(a.last_seen);
+ const seen=seenDate?seenDate.toLocaleString():'尚未上报';
  const bestText=best.ip?('最佳 '+escapeHTML(best.ip)+' / '+escapeHTML(best.route_region||best.region||'-')):'暂无测速结果';
  return '<article class="agent-editor" data-agent-id="'+attr(a.agent_id||'')+'" data-draft-id="'+attr(a._draft_id||'')+'">'
   +'<div class="agent-editor-head"><div><div class="agent-editor-title">'+title+'</div><div class="agent-editor-status"><span class="status-dot '+(online?'online':'offline')+'"></span>'+(online?'在线':'离线')+host+'</div></div><button class="danger" onclick="removeAgentEditor(this)">'+(isDraft?'取消':'删除')+'</button></div>'
@@ -1293,7 +1299,8 @@ function renderAgents(payload){
  }
  agentRows.innerHTML=list.map(a=>{
    const best=a.best||{};
-   const seen=a.last_seen?new Date(a.last_seen).toLocaleString():'-';
+   const seenDate=agentSeenDate(a.last_seen);
+   const seen=seenDate?seenDate.toLocaleString():'-';
    const id=[a.display_name||a.agent_id,a.hostname&&a.hostname!==a.agent_id?a.hostname:''].filter(Boolean).map(escapeHTML).join(' / ');
    return '<tr><td>'+id+'</td><td>'+escapeHTML(a.probe_source||'-')+'</td><td>'+escapeHTML(a.carrier||'-')+'</td><td>'+seen+'</td><td>'+(a.candidate_count||0)+'</td><td>'+escapeHTML(best.ip||'-')+'</td><td>'+escapeHTML(best.region||best.route_region||'-')+'</td><td>'+(Number.isFinite(best.score)?best.score.toFixed(1):'-')+'</td></tr>';
  }).join('');
