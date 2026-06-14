@@ -89,6 +89,8 @@ go run . discover config.yaml
 go run . probe config.yaml
 go run . once config.yaml
 go run . run config.yaml
+go run . server config.yaml
+go run . agent agent.yaml
 ```
 
 | 命令 | 作用 |
@@ -97,8 +99,30 @@ go run . run config.yaml
 | `probe` / `trace` / `score` | 只探测和学习，不切换输出 |
 | `once` / `switch` | 探测、学习、评分，满足滞后条件后写输出 |
 | `run` | 运行一轮后等待 `check_interval_seconds`，再运行下一轮，并启动 dashboard；页面可暂停/恢复自动探测 |
+| `server` | 母鸡模式，只提供 dashboard、配置下发和 agent 上报 API，不做任何本机测量 |
+| `agent` | 探针模式，主动从 `server_url` 拉取 CF 段和扫描参数，在本机网络测量后上报给母鸡 |
 | `history` | 输出学习状态和 POP 漂移历史 |
 | `render` | 用已保存的当前入口重新生成输出文件 |
+
+## 母鸡 + Agent
+
+母鸡维护 CF 种子段、采样预算、锚点和 dashboard。Agent 不保存全局策略，不更新 Cloudflare DNS，只负责从自己的真实网络出口测量并上报。
+
+母鸡启动：
+
+```powershell
+$env:CFAR_AGENT_TOKEN="CHANGE_ME_SHARED_TOKEN"
+go run . server config.yaml
+```
+
+VPS 一键安装 agent：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kuaichu/CFAnycastRouter/main/install.sh \
+  | sudo bash -s -- --server http://10.0.0.234:19199 --id vps-hk-01 --carrier auto --token CHANGE_ME_SHARED_TOKEN
+```
+
+如果母鸡没有设置 `CFAR_AGENT_TOKEN`，agent 上报接口不强制鉴权。生产环境建议设置相同 token。
 
 ## 输出
 

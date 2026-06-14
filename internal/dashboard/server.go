@@ -29,22 +29,28 @@ type ControlStatus struct {
 }
 
 type Server struct {
-	port       int
-	statePath  string
-	cfgPath    string
-	onScan     ScanFunc
-	onSeeds    SeedsFunc
-	onLookup   LookupFunc
-	onSettings SettingsFunc
-	onControl  ControlFunc
-	mu         sync.RWMutex
-	last       *router.CycleResult
-	scanning   bool
-	server     *http.Server
+	port          int
+	statePath     string
+	cfgPath       string
+	onScan        ScanFunc
+	onSeeds       SeedsFunc
+	onLookup      LookupFunc
+	onSettings    SettingsFunc
+	onControl     ControlFunc
+	agentTokenEnv string
+	agents        *agentRegistry
+	mu            sync.RWMutex
+	last          *router.CycleResult
+	scanning      bool
+	server        *http.Server
 }
 
 func New(port int, statePath, cfgPath string, onScan ScanFunc, onSeeds SeedsFunc, onLookup LookupFunc, onSettings SettingsFunc, onControl ControlFunc) *Server {
-	return &Server{port: port, statePath: statePath, cfgPath: cfgPath, onScan: onScan, onSeeds: onSeeds, onLookup: onLookup, onSettings: onSettings, onControl: onControl}
+	return &Server{port: port, statePath: statePath, cfgPath: cfgPath, onScan: onScan, onSeeds: onSeeds, onLookup: onLookup, onSettings: onSettings, onControl: onControl, agents: newAgentRegistry()}
+}
+
+func (s *Server) SetAgentTokenEnv(name string) {
+	s.agentTokenEnv = strings.TrimSpace(name)
 }
 
 func (s *Server) SetLast(result *router.CycleResult) {
@@ -122,6 +128,9 @@ func (s *Server) Start() {
 	mux.HandleFunc("/api/settings", s.handleSettings)
 	mux.HandleFunc("/api/control", s.handleControl)
 	mux.HandleFunc("/api/shutdown", s.handleShutdown)
+	mux.HandleFunc("/api/agents", s.handleAgents)
+	mux.HandleFunc("/api/agent/config", s.handleAgentConfig)
+	mux.HandleFunc("/api/agent/report", s.handleAgentReport)
 	s.server = &http.Server{Addr: fmt.Sprintf(":%d", s.port), Handler: mux}
 	go func() {
 		log.Printf("[dashboard] http://0.0.0.0:%d", s.port)
@@ -600,6 +609,11 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <table class="final-table"><thead><tr><th class="col-region">地区</th><th class="col-ip">最终 IP</th><th class="col-entry">入口</th><th class="col-ping">延迟</th><th class="col-loss">丢包</th></tr></thead><tbody id="anchorFinalRows"><tr><td colspan="5">等待扫描数据</td></tr></tbody></table>
 </div>
 </section>
+<div class="section-title">探针上报</div>
+<section class="panel">
+<div class="k">Agent 列表</div>
+<table class="final-table"><thead><tr><th>Agent</th><th>探测源</th><th>运营商</th><th>最后上报</th><th>候选</th><th>最优 IP</th><th>地区</th><th>得分</th></tr></thead><tbody id="agentRows"><tr><td colspan="8">等待 agent 上报</td></tr></tbody></table>
+</section>
 <div class="section-title">数据区 / 测试 IP 原始数据</div>
 <div class="table-tools"><div class="segments" id="regionFilters">
 <button class="seg active" data-region="ALL">全部</button>
@@ -968,15 +982,30 @@ async function saveSettings(){
  settingsCache=res.settings;
  setTimeout(closeSettings,700);
 }
+function renderAgents(payload){
+ const list=(payload&&payload.agents)||[];
+ if(!list.length){
+   agentRows.innerHTML='<tr><td colspan="8">等待 agent 上报</td></tr>';
+   return;
+ }
+ agentRows.innerHTML=list.map(a=>{
+   const best=a.best||{};
+   const seen=a.last_seen?new Date(a.last_seen).toLocaleString():'-';
+   const id=[a.agent_id,a.hostname&&a.hostname!==a.agent_id?a.hostname:''].filter(Boolean).join(' / ');
+   return '<tr><td>'+id+'</td><td>'+(a.probe_source||'-')+'</td><td>'+(a.carrier||'-')+'</td><td>'+seen+'</td><td>'+(a.candidate_count||0)+'</td><td>'+(best.ip||'-')+'</td><td>'+(best.region||best.route_region||'-')+'</td><td>'+(Number.isFinite(best.score)?best.score.toFixed(1):'-')+'</td></tr>';
+ }).join('');
+}
 async function refresh(){
  const settingsPromise=settingsCache?Promise.resolve(settingsCache):fetch('/api/settings?ts='+Date.now()).then(r=>r.json()).catch(()=>null);
- const [last,state,seeds,settings,control]=await Promise.all([
+ const [last,state,seeds,settings,control,agents]=await Promise.all([
    fetch('/api/last?ts='+Date.now()).then(r=>r.json()).catch(()=>null),
    fetch('/api/state-summary?ts='+Date.now()).then(r=>r.json()).catch(()=>null),
    fetch('/api/seeds?ts='+Date.now()).then(r=>r.json()).catch(()=>null),
    settingsPromise,
-   fetch('/api/control?ts='+Date.now()).then(r=>r.json()).catch(()=>null)
+   fetch('/api/control?ts='+Date.now()).then(r=>r.json()).catch(()=>null),
+   fetch('/api/agents?ts='+Date.now()).then(r=>r.json()).catch(()=>null)
  ]);
+ renderAgents(agents);
  if(settings&&!settings.error){ settingsCache=settings; }
  if(control&&!control.error){ controlCache=control; applyControl(control); }
  if(seeds&&seeds.text&&!seedDirty&&document.activeElement!==seedInput){ seedInput.value=seeds.text; }

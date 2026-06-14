@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"cf-anycast-router/internal/agent"
 	"cf-anycast-router/internal/config"
 	"cf-anycast-router/internal/dashboard"
 	"cf-anycast-router/internal/discover"
@@ -39,6 +41,17 @@ func main() {
 	switch cmd {
 	case "run":
 		runLoop(cfgPath, cfg, st, rt)
+	case "server", "hub":
+		d := dashboard.New(cfg.WebPort, cfg.StatePath, cfgPath, nil, nil, nil, nil, nil)
+		d.SetAgentTokenEnv(cfg.AgentTokenEnv)
+		d.Start()
+		waitForInterrupt()
+	case "agent":
+		ctx, stop := interruptContext()
+		defer stop()
+		if err := agent.New(cfg, st, rt).Run(ctx); err != nil {
+			log.Fatalf("agent: %v", err)
+		}
 	case "once", "switch":
 		result, err := rt.Cycle()
 		if err != nil {
@@ -67,6 +80,7 @@ func main() {
 		}, func(result *router.CycleResult) {
 			d.SetLast(result)
 		}), seedsCallback(cfg), lookupCallback(cfgPath, cfg, rt, st), settingsCallback(cfg), controlCallback(control, pausePath))
+		d.SetAgentTokenEnv(cfg.AgentTokenEnv)
 		rt.SetProgress(func(candidate router.Candidate) {
 			d.UpsertCandidate(candidate)
 		})
@@ -83,7 +97,7 @@ func parseArgs(args []string) (cmd string, cfgPath string) {
 	cfgPath = "config.yaml"
 	if len(args) > 0 {
 		switch args[0] {
-		case "run", "once", "switch", "probe", "trace", "score", "discover", "render", "history", "dashboard":
+		case "run", "server", "hub", "agent", "once", "switch", "probe", "trace", "score", "discover", "render", "history", "dashboard":
 			cmd = args[0]
 			if len(args) > 1 {
 				cfgPath = args[1]
@@ -105,6 +119,7 @@ func runLoop(cfgPath string, cfg *config.Config, st *history.State, rt *router.R
 	}, func(result *router.CycleResult) {
 		d.SetLast(result)
 	}), seedsCallback(cfg), lookupCallback(cfgPath, cfg, rt, st), settingsCallback(cfg), controlCallback(control, pausePath))
+	d.SetAgentTokenEnv(cfg.AgentTokenEnv)
 	rt.SetProgress(func(candidate router.Candidate) {
 		d.UpsertCandidate(candidate)
 	})
@@ -458,6 +473,19 @@ func waitForInterrupt() {
 	log.Printf("received interrupt, exiting")
 }
 
+func interruptContext() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	go func() {
+		<-sigCh
+		log.Printf("received interrupt, exiting")
+		cancel()
+		signal.Stop(sigCh)
+	}()
+	return ctx, cancel
+}
+
 func writeJSON(v any) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
@@ -475,10 +503,12 @@ func usage() {
 	fmt.Println(`CF Anycast Router
 
 Usage:
-  cf-router [run|once|switch|discover|probe|trace|score|render|history|dashboard] [config.yaml]
+  cf-router [run|server|agent|once|switch|discover|probe|trace|score|render|history|dashboard] [config.yaml]
 
 Commands:
   run        continuous local-agent routing loop
+  server     serve the mother dashboard and agent report API without probing
+  agent      pull scan assignments from server_url, measure locally, and report back
   once       run one probe/score/switch cycle
   probe      evaluate candidates without switching outputs
   trace      alias of probe, includes Cloudflare POP trace

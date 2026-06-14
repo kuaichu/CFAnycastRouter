@@ -3,6 +3,11 @@
 
 probe_source: 宁波联通
 carrier: cu
+# 母鸡模式下用于校验 agent 上报；真实 token 放环境变量 CFAR_AGENT_TOKEN。
+agent_token_env: CFAR_AGENT_TOKEN
+# agent 模式才需要：
+# agent_id: vps-hk-01
+# server_url: http://10.0.0.234:19199
 trace_host: "cloudflare.com"
 trace_path: "/cdn-cgi/trace"
 probe_port: 443

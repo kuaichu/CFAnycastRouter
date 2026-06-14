@@ -14,8 +14,11 @@ import (
 )
 
 type Config struct {
-	ProbeSource string `yaml:"probe_source"`
-	Carrier     string `yaml:"carrier"`
+	ProbeSource   string `yaml:"probe_source"`
+	Carrier       string `yaml:"carrier"`
+	AgentID       string `yaml:"agent_id"`
+	ServerURL     string `yaml:"server_url"`
+	AgentTokenEnv string `yaml:"agent_token_env"`
 
 	TraceHost string `yaml:"trace_host"`
 	TracePath string `yaml:"trace_path"`
@@ -145,6 +148,7 @@ func defaults() *Config {
 	return &Config{
 		ProbeSource:                  "local-agent",
 		Carrier:                      "auto",
+		AgentTokenEnv:                "CFAR_AGENT_TOKEN",
 		TraceHost:                    "cloudflare.com",
 		TracePath:                    "/cdn-cgi/trace",
 		ProbePort:                    443,
@@ -182,6 +186,12 @@ func (c *Config) normalize() error {
 	c.Carrier = NormalizeCarrier(c.Carrier)
 	if c.Carrier == "auto" {
 		c.Carrier = InferCarrier(c.ProbeSource)
+	}
+	c.AgentID = strings.TrimSpace(c.AgentID)
+	c.ServerURL = strings.TrimRight(strings.TrimSpace(c.ServerURL), "/")
+	c.AgentTokenEnv = strings.TrimSpace(c.AgentTokenEnv)
+	if c.AgentTokenEnv == "" {
+		c.AgentTokenEnv = "CFAR_AGENT_TOKEN"
 	}
 	c.TraceHost = strings.TrimSpace(c.TraceHost)
 	if c.TraceHost == "" {
@@ -248,7 +258,7 @@ func (c *Config) normalize() error {
 	if c.StatePath == "" {
 		c.StatePath = "data/state.json"
 	}
-	if len(c.SeedIPs) == 0 && len(c.SeedCIDRs) == 0 && len(c.Pools) == 0 {
+	if len(c.SeedIPs) == 0 && len(c.SeedCIDRs) == 0 && len(c.Pools) == 0 && c.ServerURL == "" {
 		return fmt.Errorf("at least one seed_ips or seed_cidrs entry is required")
 	}
 	for i, ip := range c.SeedIPs {
