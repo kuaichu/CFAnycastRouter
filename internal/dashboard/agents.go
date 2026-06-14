@@ -138,6 +138,6 @@ func assignmentFromConfig(cfg *config.Config) protocol.AgentAssignment {
 		PreferredPOPs:                append([]string(nil), cfg.PreferredPOPs...),
 		SeedIPs:                      append([]string(nil), cfg.SeedIPs...),
 		SeedCIDRs:                    append([]string(nil), cfg.SeedCIDRs...),
-		AnchorProbes:                 append([]config.AnchorProbeConfig(nil), cfg.AnchorProbes...),
+		SpeedTest:                    cfg.SpeedTest,
 	}
 }

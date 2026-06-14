@@ -66,7 +66,7 @@ type Config struct {
 	Outputs []OutputConfig `yaml:"outputs"`
 
 	CloudflareDNS CloudflareDNSConfig `yaml:"cloudflare_dns"`
-	AnchorProbes  []AnchorProbeConfig `yaml:"anchor_probes" json:"anchor_probes"`
+	SpeedTest     SpeedTestConfig     `yaml:"speed_test" json:"speed_test"`
 
 	ProbeTimeout  time.Duration `yaml:"-"`
 	CheckInterval time.Duration `yaml:"-"`
@@ -107,17 +107,11 @@ type DNSRecordConfig struct {
 	Domain  string `yaml:"domain" json:"domain"`
 }
 
-type AnchorProbeConfig struct {
-	Enabled  bool   `yaml:"enabled" json:"enabled"`
-	Region   string `yaml:"region" json:"region"`
-	Name     string `yaml:"name" json:"name"`
-	Host     string `yaml:"host" json:"host"`
-	Path     string `yaml:"path" json:"path"`
-	Port     int    `yaml:"port" json:"port"`
-	Network  string `yaml:"network" json:"network"`
-	UUIDEnv  string `yaml:"uuid_env,omitempty" json:"uuid_env,omitempty"`
-	TestHost string `yaml:"test_host,omitempty" json:"test_host,omitempty"`
-	TestPath string `yaml:"test_path,omitempty" json:"test_path,omitempty"`
+type SpeedTestConfig struct {
+	Enabled bool   `yaml:"enabled" json:"enabled"`
+	Host    string `yaml:"host" json:"host"`
+	Path    string `yaml:"path" json:"path"`
+	Bytes   int64  `yaml:"bytes" json:"bytes"`
 }
 
 type ManageSettings struct {
@@ -126,7 +120,7 @@ type ManageSettings struct {
 	CheckIntervalSec       int                 `json:"check_interval_seconds"`
 	MaxRouteTracesPerCycle int                 `json:"max_route_traces_per_cycle"`
 	CloudflareDNS          CloudflareDNSConfig `json:"cloudflare_dns"`
-	AnchorProbes           []AnchorProbeConfig `json:"anchor_probes"`
+	SpeedTest              SpeedTestConfig     `json:"speed_test"`
 }
 
 func Load(path string) (*Config, error) {
@@ -179,6 +173,12 @@ func defaults() *Config {
 		HotMaxPerSegment:             8,
 		HotMaxScore:                  95,
 		PreferredPOPs:                []string{"HK", "JP", "SG"},
+		SpeedTest: SpeedTestConfig{
+			Enabled: true,
+			Host:    "speed.cloudflare.com",
+			Path:    "/__down",
+			Bytes:   262144,
+		},
 	}
 }
 
@@ -364,47 +364,24 @@ func (c *Config) normalize() error {
 			})
 		}
 	}
-	for i := range c.AnchorProbes {
-		anchor := &c.AnchorProbes[i]
-		anchor.Region = NormalizePOP(anchor.Region)
-		anchor.Name = strings.TrimSpace(anchor.Name)
-		anchor.Host = strings.TrimSpace(strings.TrimSuffix(anchor.Host, "."))
-		if anchor.Path == "" {
-			anchor.Path = "/"
-		}
-		if !strings.HasPrefix(anchor.Path, "/") {
-			anchor.Path = "/" + anchor.Path
-		}
-		if anchor.Port == 0 {
-			anchor.Port = 443
-		}
-		if anchor.Port < 1 || anchor.Port > 65535 {
-			return fmt.Errorf("anchor_probes[%d].port must be 1-65535", i)
-		}
-		anchor.Network = strings.ToLower(strings.TrimSpace(anchor.Network))
-		if anchor.Network == "" {
-			anchor.Network = "https"
-		}
-		if anchor.Network != "https" && anchor.Network != "ws" {
-			return fmt.Errorf("anchor_probes[%d].network must be https or ws", i)
-		}
-		anchor.UUIDEnv = strings.TrimSpace(anchor.UUIDEnv)
-		anchor.TestHost = strings.TrimSpace(strings.TrimSuffix(anchor.TestHost, "."))
-		if anchor.TestHost == "" {
-			anchor.TestHost = "www.gstatic.com"
-		}
-		if anchor.TestPath == "" {
-			anchor.TestPath = "/generate_204"
-		}
-		if !strings.HasPrefix(anchor.TestPath, "/") {
-			anchor.TestPath = "/" + anchor.TestPath
-		}
-		if anchor.Region == "" || anchor.Host == "" {
-			return fmt.Errorf("anchor_probes[%d] requires region and host", i)
-		}
-		if anchor.Name == "" {
-			anchor.Name = anchor.Region
-		}
+	c.SpeedTest.Host = strings.TrimSpace(strings.TrimSuffix(c.SpeedTest.Host, "."))
+	if c.SpeedTest.Host == "" {
+		c.SpeedTest.Host = "speed.cloudflare.com"
+	}
+	if c.SpeedTest.Path == "" {
+		c.SpeedTest.Path = "/__down"
+	}
+	if !strings.HasPrefix(c.SpeedTest.Path, "/") {
+		c.SpeedTest.Path = "/" + c.SpeedTest.Path
+	}
+	if c.SpeedTest.Bytes <= 0 {
+		c.SpeedTest.Bytes = 262144
+	}
+	if c.SpeedTest.Bytes < 4096 {
+		c.SpeedTest.Bytes = 4096
+	}
+	if c.SpeedTest.Bytes > 4*1024*1024 {
+		c.SpeedTest.Bytes = 4 * 1024 * 1024
 	}
 	for i := range c.Pools {
 		p := &c.Pools[i]
@@ -512,7 +489,7 @@ func (c *Config) ManageSettings() ManageSettings {
 		CheckIntervalSec:       c.CheckIntervalSec,
 		MaxRouteTracesPerCycle: c.MaxRouteTracesPerCycle,
 		CloudflareDNS:          c.CloudflareDNS,
-		AnchorProbes:           c.AnchorProbes,
+		SpeedTest:              c.SpeedTest,
 	}
 }
 
@@ -626,7 +603,7 @@ func SaveManageSettings(path string, settings ManageSettings) (*Config, error) {
 	cfg.CheckIntervalSec = settings.CheckIntervalSec
 	cfg.MaxRouteTracesPerCycle = settings.MaxRouteTracesPerCycle
 	cfg.CloudflareDNS = settings.CloudflareDNS
-	cfg.AnchorProbes = settings.AnchorProbes
+	cfg.SpeedTest = settings.SpeedTest
 	if cfg.ProbeSource == "" {
 		cfg.ProbeSource = "local-agent"
 	}
@@ -657,7 +634,7 @@ func saveManageSettingsNode(path string, cfg *Config) error {
 	upsertScalarWithTag(mapping, "check_interval_seconds", fmt.Sprintf("%d", cfg.CheckIntervalSec), "!!int")
 	upsertScalarWithTag(mapping, "max_route_traces_per_cycle", fmt.Sprintf("%d", cfg.MaxRouteTracesPerCycle), "!!int")
 	upsertCloudflareDNS(mapping, cfg.CloudflareDNS)
-	upsertAnchorProbes(mapping, cfg.AnchorProbes)
+	upsertSpeedTest(mapping, cfg.SpeedTest)
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
@@ -792,31 +769,19 @@ func upsertCloudflareDNS(mapping *yaml.Node, cfg CloudflareDNSConfig) {
 	mapping.Content = append(mapping.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "cloudflare_dns"}, node)
 }
 
-func upsertAnchorProbes(mapping *yaml.Node, anchors []AnchorProbeConfig) {
-	seq := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
-	for _, anchor := range anchors {
-		item := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
-		addMapScalar(item, "enabled", fmt.Sprintf("%t", anchor.Enabled), "!!bool")
-		addMapScalar(item, "region", anchor.Region, "!!str")
-		addMapScalar(item, "name", anchor.Name, "!!str")
-		addMapScalar(item, "host", anchor.Host, "!!str")
-		addMapScalar(item, "path", anchor.Path, "!!str")
-		addMapScalar(item, "port", fmt.Sprintf("%d", anchor.Port), "!!int")
-		addMapScalar(item, "network", anchor.Network, "!!str")
-		if anchor.UUIDEnv != "" {
-			addMapScalar(item, "uuid_env", anchor.UUIDEnv, "!!str")
-		}
-		addMapScalar(item, "test_host", anchor.TestHost, "!!str")
-		addMapScalar(item, "test_path", anchor.TestPath, "!!str")
-		seq.Content = append(seq.Content, item)
-	}
+func upsertSpeedTest(mapping *yaml.Node, cfg SpeedTestConfig) {
+	node := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	addMapScalar(node, "enabled", fmt.Sprintf("%t", cfg.Enabled), "!!bool")
+	addMapScalar(node, "host", cfg.Host, "!!str")
+	addMapScalar(node, "path", cfg.Path, "!!str")
+	addMapScalar(node, "bytes", fmt.Sprintf("%d", cfg.Bytes), "!!int")
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
-		if mapping.Content[i].Value == "anchor_probes" {
-			mapping.Content[i+1] = seq
+		if mapping.Content[i].Value == "speed_test" {
+			mapping.Content[i+1] = node
 			return
 		}
 	}
-	mapping.Content = append(mapping.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "anchor_probes"}, seq)
+	mapping.Content = append(mapping.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "speed_test"}, node)
 }
 
 func addMapScalar(mapping *yaml.Node, key, value, tag string) {

@@ -356,7 +356,7 @@ func settingsCallback(cfg *config.Config) dashboard.SettingsFunc {
 		cfg.CheckInterval = next.CheckInterval
 		cfg.MaxRouteTracesPerCycle = next.MaxRouteTracesPerCycle
 		cfg.CloudflareDNS = next.CloudflareDNS
-		cfg.AnchorProbes = next.AnchorProbes
+		cfg.SpeedTest = next.SpeedTest
 		return nil
 	}
 }

@@ -218,7 +218,7 @@ func (r *Runner) applyAssignment(a protocol.AgentAssignment) {
 	}
 	r.cfg.SeedIPs = append([]string(nil), a.SeedIPs...)
 	r.cfg.SeedCIDRs = append([]string(nil), a.SeedCIDRs...)
-	r.cfg.AnchorProbes = append([]config.AnchorProbeConfig(nil), a.AnchorProbes...)
+	r.cfg.SpeedTest = a.SpeedTest
 }
 
 func (r *Runner) agentID() string {

@@ -106,7 +106,7 @@ go run . agent agent.yaml
 
 ## 母鸡 + Agent
 
-母鸡维护 CF 种子段、采样预算、锚点和 dashboard。Agent 不保存全局策略，不更新 Cloudflare DNS，只负责从自己的真实网络出口测量并上报。
+母鸡维护 CF 种子段、采样预算、Cloudflare 官方测速参数和 dashboard。Agent 不保存全局策略，不更新 Cloudflare DNS，只负责从自己的真实网络出口测量并上报。
 
 母鸡启动：
 

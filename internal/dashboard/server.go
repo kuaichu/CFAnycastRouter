@@ -519,8 +519,8 @@ button.ghost{background:transparent}button.danger{background:#3a151a;border-colo
 .field input,.field select{width:100%;box-sizing:border-box;background:#071018;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font:14px ui-monospace,SFMono-Regular,Consolas,monospace}
 .field input:focus,.field select:focus{outline:none;border-color:#18c99b;box-shadow:0 0 0 3px rgba(24,201,155,.14)}
 .check-row{display:flex;gap:8px;align-items:center;color:#c7d5e8;margin:10px 0}.check-row input{width:auto}
-.record-list{display:grid;gap:10px;margin-top:10px}.record-row{display:grid;grid-template-columns:72px 88px 1fr 80px 40px;gap:8px;align-items:center}.anchor-row{display:grid;grid-template-columns:72px 1fr 1fr 80px 74px 80px 40px;gap:8px;align-items:center}
-.record-row input,.record-row select,.anchor-row input,.anchor-row select{background:#071018;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px}
+.record-list{display:grid;gap:10px;margin-top:10px}.record-row{display:grid;grid-template-columns:72px 88px 1fr 80px 40px;gap:8px;align-items:center}
+.record-row input,.record-row select{background:#071018;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px}
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px}
 .icon-btn{width:36px;height:36px;padding:0;display:grid;place-items:center}
 .section-title{margin:20px 0 8px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
@@ -534,7 +534,7 @@ button.ghost{background:transparent}button.danger{background:#3a151a;border-colo
 table{width:100%;border-collapse:collapse;margin-top:16px;background:var(--panel);border:1px solid var(--line)}
 th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;font-variant-numeric:tabular-nums}
 th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--text)}th.sortable.active{color:var(--ok)}tr.best td{color:var(--ok)}tr.bad td{color:var(--bad)}tr.hot td{color:var(--ok)}
-@media(max-width:800px){.grid,.settings,.form-grid,.final-grid{grid-template-columns:1fr}.record-row,.anchor-row{grid-template-columns:1fr 1fr}.record-row input:nth-child(3),.anchor-row input:nth-child(3){grid-column:1/-1}main{padding:18px}th:nth-child(4),td:nth-child(4),th:nth-child(8),td:nth-child(8){display:none}}
+@media(max-width:800px){.grid,.settings,.form-grid,.final-grid{grid-template-columns:1fr}.record-row{grid-template-columns:1fr 1fr}.record-row input:nth-child(3){grid-column:1/-1}main{padding:18px}th:nth-child(4),td:nth-child(4),th:nth-child(8),td:nth-child(8){display:none}}
 </style>
 </head>
 <body><main>
@@ -569,7 +569,7 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <div id="settingsModal" class="modal" onclick="if(event.target===this)closeSettings()">
 <div class="modal-card">
 <div class="modal-head"><div><h2>管理设置</h2><div class="hint">修改后会写入配置文件，下一轮检测使用新设置。</div></div><button class="icon-btn" onclick="closeSettings()">×</button></div>
-<div class="tabs"><div class="tab active" data-tab="basic" onclick="switchSettingsTab('basic')">基础设置</div><div class="tab" data-tab="anchors" onclick="switchSettingsTab('anchors')">实测入口</div><div class="tab" data-tab="dns" onclick="switchSettingsTab('dns')">地区解析</div></div>
+<div class="tabs"><div class="tab active" data-tab="basic" onclick="switchSettingsTab('basic')">基础设置</div><div class="tab" data-tab="speed" onclick="switchSettingsTab('speed')">官方测速</div><div class="tab" data-tab="dns" onclick="switchSettingsTab('dns')">地区解析</div></div>
 <section id="settings-basic" class="settings-pane">
 <div class="form-grid">
 <div class="field"><label>探测源说明</label><input id="setProbeSource" placeholder="宁波联通"></div>
@@ -578,10 +578,14 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <div class="field"><label>本轮路由追踪预算</label><input id="setTraceBudget" type="number" min="1" step="1"></div>
 </div>
 </section>
-<section id="settings-anchors" class="settings-pane" style="display:none">
-<div class="field"><label>落地锚点域名</label><div id="anchorList" class="record-list"></div></div>
-<button onclick="addAnchorRow()">添加锚点</button>
-<div class="small">每个候选 IP 会用这些域名做 Host/SNI 强制 HTTPS 探测；最快的锚点会作为实际入口判断依据。路径建议填一个不会缓存的小页面或健康检查路径。</div>
+<section id="settings-speed" class="settings-pane" style="display:none">
+<label class="check-row"><input id="setSpeedEnabled" type="checkbox"> 启用 Cloudflare 官方下载测速</label>
+<div class="form-grid">
+<div class="field"><label>测速域名</label><input id="setSpeedHost" placeholder="speed.cloudflare.com"></div>
+<div class="field"><label>测速路径</label><input id="setSpeedPath" placeholder="/__down"></div>
+<div class="field"><label>每次下载字节数</label><input id="setSpeedBytes" type="number" min="4096" max="4194304" step="4096"></div>
+</div>
+<div class="small">每个候选 IP 会直连该 IP 的 443 端口，SNI/Host 使用 speed.cloudflare.com，请求 /__down?bytes=N。</div>
 </section>
 <section id="settings-dns" class="settings-pane" style="display:none">
 <label class="check-row"><input id="setDnsEnabled" type="checkbox"> 启用 Cloudflare DNS 动态解析</label>
@@ -605,8 +609,8 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <div class="panel"><div class="k">DNS 解析最终区</div><div class="small">只按本地路由地区 route_region 选择，用于 cf-hk / cf-us 这类解析。</div>
 <table class="final-table"><thead><tr><th class="col-region">地区</th><th class="col-ip">最终 IP</th><th class="col-domain">解析域名</th><th class="col-ping">Ping</th><th class="col-hint">路由依据</th></tr></thead><tbody id="routeFinalRows"><tr><td colspan="5">等待扫描数据</td></tr></tbody></table>
 </div>
-<div class="panel"><div class="k">节点替换最终区</div><div class="small">只按完整 VLESS/WS 锚点实测选择，用于替换节点 server。</div>
-<table class="final-table"><thead><tr><th class="col-region">地区</th><th class="col-ip">最终 IP</th><th class="col-entry">入口</th><th class="col-ping">延迟</th><th class="col-loss">丢包</th></tr></thead><tbody id="anchorFinalRows"><tr><td colspan="5">等待扫描数据</td></tr></tbody></table>
+<div class="panel"><div class="k">CF 官方测速最终区</div><div class="small">按 Cloudflare 官方 __down 下载结果选择，用于观察服务面下载表现。</div>
+<table class="final-table"><thead><tr><th class="col-region">地区</th><th class="col-ip">最终 IP</th><th class="col-entry">测速源</th><th class="col-ping">耗时</th><th class="col-loss">Mbps</th></tr></thead><tbody id="speedFinalRows"><tr><td colspan="5">等待扫描数据</td></tr></tbody></table>
 </div>
 </section>
 <div class="section-title">探针上报</div>
@@ -629,8 +633,8 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <th class="sortable" data-sort="segment">段</th>
 <th class="sortable" data-sort="region">判定地区</th>
 <th class="sortable" data-sort="hint">判断依据</th>
-<th class="sortable" data-sort="anchor">实测入口</th>
-<th class="sortable" data-sort="anchor_rtt">实测延迟</th>
+<th class="sortable" data-sort="cf_speed">CF 官方测速</th>
+<th class="sortable" data-sort="cf_mbps">估算 Mbps</th>
 <th class="sortable" data-sort="colo">CF Colo</th>
 <th class="sortable" data-sort="ping">Ping 延迟</th>
 <th class="sortable" data-sort="pingloss">Ping 丢包</th>
@@ -699,7 +703,7 @@ function regionSourceLabel(v){
  const map={
    'route':'ICMP 路由',
    'cf-colo':'CF Colo',
-   'anchor':'实测入口',
+   'cf-speed':'CF 官方测速',
    'cf-colo-tls':'443 服务面',
    'unknown':'未知'
  };
@@ -717,8 +721,8 @@ function candidateValue(c,key){
    case 'segment': return c.segment||'';
    case 'region': return c.region||c.route_region||'';
    case 'hint': return hint;
-   case 'anchor': return c.anchor_name||c.anchor_region||c.anchor_host||'';
-   case 'anchor_rtt': return Number.isFinite(c.anchor_rtt_ms)&&c.anchor_rtt_ms>0?c.anchor_rtt_ms:Number.POSITIVE_INFINITY;
+   case 'cf_speed': return Number.isFinite(c.cf_speed_rtt_ms)&&c.cf_speed_rtt_ms>0?c.cf_speed_rtt_ms:Number.POSITIVE_INFINITY;
+   case 'cf_mbps': return Number.isFinite(c.cf_speed_mbps)?c.cf_speed_mbps:0;
    case 'colo': return colo;
    case 'ping': return Number.isFinite(c.ping_rtt_ms)?c.ping_rtt_ms:Number.POSITIVE_INFINITY;
    case 'pingloss': return Number.isFinite(c.ping_loss_rate)?c.ping_loss_rate:Number.POSITIVE_INFINITY;
@@ -790,11 +794,11 @@ function bestRouteForRegion(candidates,region){
  }
  return best;
 }
-function bestAnchorForRegion(candidates,region){
+function bestSpeedForRegion(candidates,region){
  let best=null, bestScore=Number.POSITIVE_INFINITY;
  for(const c of candidates||[]){
-   if(!isHealthy(c)||String(c.anchor_region||'').toUpperCase()!==region||!(c.anchor_rtt_ms>0)){ continue; }
-   const score=(c.anchor_rtt_ms||9999)+(c.anchor_jitter_ms||0)*0.5+(c.anchor_loss_rate||0)*800;
+   if(!isHealthy(c)||String(c.route_region||c.region||'').toUpperCase()!==region||!(c.cf_speed_rtt_ms>0)){ continue; }
+   const score=(c.cf_speed_rtt_ms||9999)+(c.cf_speed_jitter_ms||0)*0.5+(c.cf_speed_loss_rate||0)*800;
    if(score<bestScore){ best=c; bestScore=score; }
  }
  return best;
@@ -807,13 +811,12 @@ function renderFinalAreas(candidates,settings){
    return '<tr><td>'+region+'</td><td>'+c.ip+'</td><td>'+domainForRegion(settings,region)+'</td><td>'+fmt(c.ping_rtt_ms||0)+'</td><td>'+hint+'</td></tr>';
  }).join('');
  routeFinalRows.innerHTML=routeRows||'<tr><td colspan="5">等待扫描数据</td></tr>';
- const anchorRows=finalRegions(settings,candidates,'anchor_region').map(region=>{
-   const c=bestAnchorForRegion(candidates,region);
-   if(!c){ return '<tr><td>'+region+'</td><td>-</td><td>-</td><td>-</td><td>暂无可用锚点</td></tr>'; }
-   const entry=[c.anchor_name,c.anchor_host].filter(Boolean).join(' / ')||'-';
-   return '<tr><td>'+region+'</td><td>'+c.ip+'</td><td>'+entry+'</td><td>'+fmt(c.anchor_rtt_ms||0)+'</td><td>'+pct(c.anchor_loss_rate)+'</td></tr>';
+ const speedRows=finalRegions(settings,candidates,'route_region').map(region=>{
+   const c=bestSpeedForRegion(candidates,region);
+   if(!c){ return '<tr><td>'+region+'</td><td>-</td><td>speed.cloudflare.com</td><td>-</td><td>暂无官方测速结果</td></tr>'; }
+   return '<tr><td>'+region+'</td><td>'+c.ip+'</td><td>__down</td><td>'+fmt(c.cf_speed_rtt_ms||0)+'</td><td>'+fmt(c.cf_speed_mbps||0)+'</td></tr>';
  }).join('');
- anchorFinalRows.innerHTML=anchorRows||'<tr><td colspan="5">等待扫描数据</td></tr>';
+ speedFinalRows.innerHTML=speedRows||'<tr><td colspan="5">等待扫描数据</td></tr>';
 }
 function updateSortHeaders(){
  document.querySelectorAll('th.sortable').forEach(th=>{
@@ -847,16 +850,14 @@ function candidateRow(c,last){
  const routeRegion=(c.route_region||'-');
  const hint=[c.route_hint_ip,c.route_city,c.route_isp].filter(Boolean).join(' ');
  const source=regionSourceLabel(c.region_source);
- const anchorText=[c.anchor_region,c.anchor_name||c.anchor_host].filter(Boolean).join(' / ')||'-';
- const anchorRTT=c.anchor_rtt_ms>0?fmt(c.anchor_rtt_ms):'-';
- const reason=(c.region_source==='anchor')
-   ? (source+'：'+anchorText+'，'+anchorRTT+'ms')
-   : (c.region_source==='cf-colo-tls')
+ const speedText=c.cf_speed_rtt_ms>0?(fmt(c.cf_speed_rtt_ms)+'ms'):(c.cf_speed_error?'失败':'-');
+ const speedMbps=c.cf_speed_mbps>0?fmt(c.cf_speed_mbps):'-';
+ const reason=(c.region_source==='cf-colo-tls')
    ? (source+'：'+colo+'，TLS '+fmt(c.avg_rtt_ms||0)+'ms；ICMP '+routeRegion+(hint?'，'+hint:''))
    : ((source&&source!=='-'?source+'：':'')+(hint||decisionLabel(c.route_error||c.error)||'-'));
  const pingText=skipped?'-':(c.ping_rtt_ms>0?fmt(c.ping_rtt_ms):(c.ping_error?'失败':'-'));
- const attrs=rowAttrs({ip:ipValue(c.ip),stage:stageLabel(c.stage),segment:c.segment||'',region,hint:reason,anchor:anchorText,anchor_rtt:skipped?999999:(c.anchor_rtt_ms||999999),colo,ping:skipped?999999:(c.ping_rtt_ms>0?c.ping_rtt_ms:999999),pingloss:skipped?999999:(c.ping_loss_rate||0),rtt:skipped?999999:(c.avg_rtt_ms||0),jitter:skipped?999999:(c.jitter_ms||0),loss:skipped?999999:(c.loss_rate||0),spike:skipped?999999:(c.spike_rate||0),score:skipped?999999:(Number.isFinite(c.score)?c.score:999999)});
- return '<tr class="'+klass+'"'+attrs+' title="'+attr(c.ping_error||'')+'"><td>'+c.ip+'</td><td>'+stageLabel(c.stage)+'</td><td>'+(c.segment||'-')+'</td><td>'+region+'</td><td>'+reason+'</td><td>'+anchorText+'</td><td>'+anchorRTT+'</td><td>'+colo+'</td><td>'+pingText+'</td><td>'+(skipped?'-':pct(c.ping_loss_rate))+'</td><td>'+(skipped?'-':fmt(c.avg_rtt_ms||0))+'</td><td>'+(skipped?'-':fmt(c.jitter_ms||0))+'</td><td>'+(skipped?'-':pct(c.loss_rate))+'</td><td>'+(skipped?'-':pct(c.spike_rate))+'</td><td>'+score+'</td></tr>';
+ const attrs=rowAttrs({ip:ipValue(c.ip),stage:stageLabel(c.stage),segment:c.segment||'',region,hint:reason,cf_speed:skipped?999999:(c.cf_speed_rtt_ms||999999),cf_mbps:skipped?0:(c.cf_speed_mbps||0),colo,ping:skipped?999999:(c.ping_rtt_ms>0?c.ping_rtt_ms:999999),pingloss:skipped?999999:(c.ping_loss_rate||0),rtt:skipped?999999:(c.avg_rtt_ms||0),jitter:skipped?999999:(c.jitter_ms||0),loss:skipped?999999:(c.loss_rate||0),spike:skipped?999999:(c.spike_rate||0),score:skipped?999999:(Number.isFinite(c.score)?c.score:999999)});
+ return '<tr class="'+klass+'"'+attrs+' title="'+attr(c.ping_error||c.cf_speed_error||'')+'"><td>'+c.ip+'</td><td>'+stageLabel(c.stage)+'</td><td>'+(c.segment||'-')+'</td><td>'+region+'</td><td>'+reason+'</td><td>'+speedText+'</td><td>'+speedMbps+'</td><td>'+colo+'</td><td>'+pingText+'</td><td>'+(skipped?'-':pct(c.ping_loss_rate))+'</td><td>'+(skipped?'-':fmt(c.avg_rtt_ms||0))+'</td><td>'+(skipped?'-':fmt(c.jitter_ms||0))+'</td><td>'+(skipped?'-':pct(c.loss_rate))+'</td><td>'+(skipped?'-':pct(c.spike_rate))+'</td><td>'+score+'</td></tr>';
 }
 function stateRows(state){
  const rows=[];
@@ -869,12 +870,12 @@ function stateRows(state){
  for(const seg of segments){
    const hot=Object.values(seg.hot_ips||{}).sort((a,b)=>(a.score||9999)-(b.score||9999));
    for(const item of hot){
-     const attrs=rowAttrs({ip:ipValue(item.ip),stage:'热点',segment:seg.cidr,region:item.pop||'',hint:'',anchor:'',anchor_rtt:999999,colo:'',ping:item.ping_rtt_ms||0,pingloss:item.ping_loss_rate||0,rtt:item.avg_rtt_ms||0,jitter:item.jitter_ms||0,loss:item.loss_rate||0,spike:item.spike_rate||0,score:item.score||0});
+     const attrs=rowAttrs({ip:ipValue(item.ip),stage:'热点',segment:seg.cidr,region:item.pop||'',hint:'',cf_speed:999999,cf_mbps:0,colo:'',ping:item.ping_rtt_ms||0,pingloss:item.ping_loss_rate||0,rtt:item.avg_rtt_ms||0,jitter:item.jitter_ms||0,loss:item.loss_rate||0,spike:item.spike_rate||0,score:item.score||0});
      rows.push('<tr class="hot"'+attrs+'><td>'+item.ip+'</td><td>热点</td><td>'+seg.cidr+'</td><td>'+item.pop+'</td><td>-</td><td>-</td><td>-</td><td>-</td><td>'+fmt(item.ping_rtt_ms||0)+'</td><td>'+pct(item.ping_loss_rate)+'</td><td>'+fmt(item.avg_rtt_ms||0)+'</td><td>'+fmt(item.jitter_ms||0)+'</td><td>'+pct(item.loss_rate)+'</td><td>'+pct(item.spike_rate)+'</td><td>'+fmt(item.score||0)+'</td></tr>');
    }
    const popText=Object.entries(seg.pop_counts||{}).map(([k,v])=>k+':'+v).join(' ');
    const stage=seg.promoted?'学习段':'学习中';
-   const attrs=rowAttrs({ip:seg.cidr,stage,segment:seg.carrier,region:popText,hint:'',anchor:'',anchor_rtt:999999,colo:'',ping:999999,pingloss:999999,rtt:seg.avg_rtt_ms||0,jitter:999999,loss:seg.loss_rate||0,spike:seg.spike_rate||0,score:seg.preferred_rate||0});
+   const attrs=rowAttrs({ip:seg.cidr,stage,segment:seg.carrier,region:popText,hint:'',cf_speed:999999,cf_mbps:0,colo:'',ping:999999,pingloss:999999,rtt:seg.avg_rtt_ms||0,jitter:999999,loss:seg.loss_rate||0,spike:seg.spike_rate||0,score:seg.preferred_rate||0});
    rows.push('<tr'+attrs+'><td>'+seg.cidr+'</td><td>'+stage+'</td><td>'+seg.carrier+'</td><td>'+popText+'</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>-</td><td>'+fmt(seg.avg_rtt_ms||0)+'</td><td>-</td><td>'+pct(seg.loss_rate)+'</td><td>'+pct(seg.spike_rate)+'</td><td>'+pct(seg.preferred_rate)+'</td></tr>');
  }
  return rows.join('');
@@ -915,9 +916,11 @@ function fillSettings(s){
    addRecordRow({enabled:true,region:'HK',type:'A',domain:'cf-hk.ziher.eu.org'});
    addRecordRow({enabled:true,region:'US',type:'A',domain:'cf-us.ziher.eu.org'});
  }
- anchorList.innerHTML='';
- const anchors=s.anchor_probes||[];
- for(const anchor of anchors){ addAnchorRow(anchor); }
+ const speed=s.speed_test||{};
+ setSpeedEnabled.checked=speed.enabled!==false;
+ setSpeedHost.value=speed.host||'speed.cloudflare.com';
+ setSpeedPath.value=speed.path||'/__down';
+ setSpeedBytes.value=speed.bytes||262144;
 }
 function addRecordRow(record={}){
  const row=document.createElement('div');
@@ -929,18 +932,6 @@ function addRecordRow(record={}){
  row.querySelector('.rec-domain').value=record.domain||'';
  row.querySelector('.rec-enabled').checked=record.enabled!==false;
 }
-function addAnchorRow(anchor={}){
- const row=document.createElement('div');
- row.className='anchor-row';
- row.innerHTML="<select class=\"anchor-region\"><option>HK</option><option>US</option><option>JP</option><option>SG</option><option>EU</option></select><input class=\"anchor-name\" placeholder=\"香港落地\"><input class=\"anchor-host\" placeholder=\"hk.example.com\"><input class=\"anchor-path\" placeholder=\"/health\"><select class=\"anchor-network\"><option value=\"https\">HTTPS</option><option value=\"ws\">WS</option></select><label class=\"check-row\"><input class=\"anchor-enabled\" type=\"checkbox\">启用</label><button class=\"icon-btn\" type=\"button\" onclick=\"this.closest('.anchor-row').remove()\">×</button>";
- anchorList.appendChild(row);
- row.querySelector('.anchor-region').value=(anchor.region||'HK').toUpperCase();
- row.querySelector('.anchor-name').value=anchor.name||'';
- row.querySelector('.anchor-host').value=anchor.host||'';
- row.querySelector('.anchor-path').value=anchor.path||'/';
- row.querySelector('.anchor-network').value=anchor.network||'https';
- row.querySelector('.anchor-enabled').checked=anchor.enabled!==false;
-}
 function collectSettings(){
  const records=[...recordList.querySelectorAll('.record-row')].map(row=>({
    enabled:row.querySelector('.rec-enabled').checked,
@@ -948,15 +939,6 @@ function collectSettings(){
    type:row.querySelector('.rec-type').value.trim().toUpperCase(),
    domain:row.querySelector('.rec-domain').value.trim()
  })).filter(r=>r.region&&r.type&&r.domain);
- const anchors=[...anchorList.querySelectorAll('.anchor-row')].map(row=>({
-   enabled:row.querySelector('.anchor-enabled').checked,
-   region:row.querySelector('.anchor-region').value.trim().toUpperCase(),
-   name:row.querySelector('.anchor-name').value.trim(),
-   host:row.querySelector('.anchor-host').value.trim(),
-   path:row.querySelector('.anchor-path').value.trim()||'/',
-   port:443,
-   network:row.querySelector('.anchor-network').value
- })).filter(a=>a.region&&a.host);
  return {
    probe_source:setProbeSource.value.trim(),
    carrier:setCarrier.value,
@@ -971,7 +953,12 @@ function collectSettings(){
      proxied:setProxied.checked,
      record_sets:records
    },
-   anchor_probes:anchors
+   speed_test:{
+     enabled:setSpeedEnabled.checked,
+     host:setSpeedHost.value.trim()||'speed.cloudflare.com',
+     path:setSpeedPath.value.trim()||'/__down',
+     bytes:Number(setSpeedBytes.value)||262144
+   }
  };
 }
 async function saveSettings(){
@@ -1104,7 +1091,7 @@ document.querySelectorAll('th.sortable').forEach(th=>{
  th.addEventListener('click',()=>{
    const key=th.dataset.sort;
    if(sortState.key===key){ sortState.dir=sortState.dir==='asc'?'desc':'asc'; }
-   else { sortState={key,dir:['anchor_rtt','ping','pingloss','rtt','jitter','loss','spike','score'].includes(key)?'asc':'asc'}; }
+   else { sortState={key,dir:['cf_speed','cf_mbps','ping','pingloss','rtt','jitter','loss','spike','score'].includes(key)?'asc':'asc'}; }
    sortRenderedRows();
  });
 });

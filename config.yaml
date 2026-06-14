@@ -59,47 +59,11 @@ cloudflare_dns:
       region: US
       type: A
       domain: cf-us.ziher.eu.org
-anchor_probes:
-  - enabled: true
-    region: JP
-    name: jp-tokyo-01
-    host: ujp1.xn--ghqu5fm27b67w.com
-    path: /pq/jp1
-    port: 443
-    network: ws
-    uuid_env: CFAR_VLESS_UUID
-    test_host: www.gstatic.com
-    test_path: /generate_204
-  - enabled: true
-    region: SG
-    name: sg-01
-    host: sgp1.xn--ghq880n3na965a.com
-    path: /pq/sg1
-    port: 443
-    network: ws
-    uuid_env: CFAR_VLESS_UUID
-    test_host: www.gstatic.com
-    test_path: /generate_204
-  - enabled: true
-    region: HK
-    name: hk-01
-    host: hk1p1.xn--ghq880n3na965a.com
-    path: /pq/hk1
-    port: 443
-    network: ws
-    uuid_env: CFAR_VLESS_UUID
-    test_host: www.gstatic.com
-    test_path: /generate_204
-  - enabled: true
-    region: US
-    name: us-san-jose-01
-    host: usa1s.xn--ghqu5fm27b67w.com
-    path: /pq/us1
-    port: 443
-    network: ws
-    uuid_env: CFAR_VLESS_UUID
-    test_host: www.gstatic.com
-    test_path: /generate_204
+speed_test:
+  enabled: true
+  host: speed.cloudflare.com
+  path: /__down
+  bytes: 262144
 seed_ips: []
 seed_cidrs:
   - 104.17.144.0/20
