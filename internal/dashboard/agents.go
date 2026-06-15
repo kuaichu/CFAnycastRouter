@@ -270,8 +270,11 @@ func (s *Server) handleAgentReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snapshot := s.agents.upsert(report)
-	if report.Result != nil {
+	completed := report.Result != nil && report.Status != "scanning"
+	if completed {
 		s.SetLast(report.Result)
+	}
+	if completed && report.Status != "error" {
 		go s.updateAgentDNS(snapshot.Carrier)
 	}
 	writeJSON(w, map[string]any{"ok": true, "agent": snapshot})

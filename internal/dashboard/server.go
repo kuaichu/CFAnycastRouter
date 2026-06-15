@@ -624,7 +624,7 @@ button.ghost{background:transparent}button.danger{background:#3a151a;border-colo
 .agent-editor-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}.agent-editor-meta{color:var(--muted);font-size:12px;min-width:0}.agent-editor-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.agent-empty{border:1px dashed #315064;border-radius:8px;padding:24px;text-align:center;color:var(--muted)}
 .agent-error{color:var(--bad)}.agent-scanning{color:var(--warn)}
 .section-title{margin:20px 0 8px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
-.final-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.final-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.final-carriers{justify-content:flex-end}.final-results-wrap{overflow-x:auto;margin-top:10px}
 .final-table{margin-top:10px;table-layout:fixed}.final-table th,.final-table td{padding:8px 10px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
 .final-table td:nth-child(2){font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--ok)}
 .final-table .col-region{width:42px}.final-table .col-ip{width:132px}.final-table .col-domain{width:150px}.final-table .col-ping{width:66px}.final-table .col-loss{width:58px}
@@ -634,7 +634,7 @@ button.ghost{background:transparent}button.danger{background:#3a151a;border-colo
 table{width:100%;border-collapse:collapse;margin-top:16px;background:var(--panel);border:1px solid var(--line)}
 th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;font-variant-numeric:tabular-nums}
 th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--text)}th.sortable.active{color:var(--ok)}tr.best td{color:var(--ok)}tr.bad td{color:var(--bad)}tr.hot td{color:var(--ok)}
-@media(max-width:800px){.grid,.settings,.form-grid,.final-grid,.agent-editor-grid{grid-template-columns:1fr}.record-row{grid-template-columns:1fr 1fr}.record-row input:nth-child(3){grid-column:1/-1}main{padding:18px}.agent-manage-head,.agent-editor-foot{align-items:stretch;flex-direction:column}.agent-editor-actions{justify-content:flex-start}th:nth-child(4),td:nth-child(4),th:nth-child(8),td:nth-child(8){display:none}}
+@media(max-width:800px){.grid,.settings,.form-grid,.agent-editor-grid{grid-template-columns:1fr}.record-row{grid-template-columns:1fr 1fr}.record-row input:nth-child(3){grid-column:1/-1}main{padding:18px}.agent-manage-head,.agent-editor-foot,.final-head{align-items:stretch;flex-direction:column}.agent-editor-actions,.final-carriers{justify-content:flex-start}th:nth-child(4),td:nth-child(4),th:nth-child(8),td:nth-child(8){display:none}}
 </style>
 </head>
 <body><main>
@@ -722,13 +722,9 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 </div>
 </div>
 <div class="section-title">最终区</div>
-<section class="final-grid">
-<div class="panel"><div class="k">DNS 解析最终区</div><div class="small">按 Agent 运营商和本地路由地区 route_region 选择，用于 cu-cf-hk / cu-cf-us 这类解析。</div>
-<table class="final-table"><thead><tr><th class="col-region">地区</th><th class="col-ip">最终 IP</th><th class="col-domain">解析域名</th><th class="col-ping">Ping</th><th class="col-hint">路由依据</th></tr></thead><tbody id="routeFinalRows"><tr><td colspan="5">等待扫描数据</td></tr></tbody></table>
-</div>
-<div class="panel"><div class="k">CF 官方测速最终区</div><div class="small">按 Cloudflare 官方 __down 下载结果选择，用于观察服务面下载表现。</div>
-<table class="final-table"><thead><tr><th class="col-region">地区</th><th class="col-ip">最终 IP</th><th class="col-entry">测速源</th><th class="col-ping">耗时</th><th class="col-loss">Mbps</th></tr></thead><tbody id="speedFinalRows"><tr><td colspan="5">等待扫描数据</td></tr></tbody></table>
-</div>
+<section class="panel">
+<div class="final-head"><div><div class="k">运营商优选与官方测速</div><div class="small">聚合同一运营商的在线 Agent；DNS 路由优选与 speed.cloudflare.com 测速结果在同一行对照。</div></div><div id="finalCarrierTabs" class="segments final-carriers"></div></div>
+<div class="final-results-wrap"><table class="final-table"><thead><tr><th>地区</th><th>DNS 优选 IP</th><th>解析域名</th><th>Ping</th><th>官方测速 IP</th><th>耗时</th><th>Mbps</th><th>Agent</th></tr></thead><tbody id="carrierFinalRows"><tr><td colspan="8">等待 Agent 扫描数据</td></tr></tbody></table></div>
 </section>
 <div class="section-title">探针上报</div>
 <section class="panel">
@@ -920,21 +916,39 @@ function bestSpeedForRegion(candidates,region){
  }
  return best;
 }
-function renderFinalAreas(candidates,settings,carrier){
- carrier=String(carrier||settings?.carrier||'unknown').toLowerCase();
- const routeRows=finalRegions(settings,candidates,'route_region',carrier).map(region=>{
-   const c=bestRouteForRegion(candidates,region);
-   if(!c){ return '<tr><td>'+region+'</td><td>-</td><td>'+domainForRegion(settings,carrier,region)+'</td><td>-</td><td>暂无 '+carrier.toUpperCase()+' '+region+' 路由候选</td></tr>'; }
-   const hint=[c.route_hint_ip,c.route_city,c.route_isp].filter(Boolean).join(' ')||'-';
-   return '<tr><td>'+region+'</td><td>'+c.ip+'</td><td>'+domainForRegion(settings,carrier,region)+'</td><td>'+fmt(c.ping_rtt_ms||0)+'</td><td>'+hint+'</td></tr>';
- }).join('');
- routeFinalRows.innerHTML=routeRows||'<tr><td colspan="5">等待扫描数据</td></tr>';
- const speedRows=finalRegions(settings,candidates,'route_region',carrier).map(region=>{
-   const c=bestSpeedForRegion(candidates,region);
-   if(!c){ return '<tr><td>'+region+'</td><td>-</td><td>speed.cloudflare.com</td><td>-</td><td>暂无官方测速结果</td></tr>'; }
-   return '<tr><td>'+region+'</td><td>'+c.ip+'</td><td>__down</td><td>'+fmt(c.cf_speed_rtt_ms||0)+'</td><td>'+fmt(c.cf_speed_mbps||0)+'</td></tr>';
- }).join('');
- speedFinalRows.innerHTML=speedRows||'<tr><td colspan="5">等待扫描数据</td></tr>';
+function finalCarrierLabel(value){
+ return ({cu:'联通',ct:'电信',cm:'移动',unknown:'未知'})[value]||String(value||'未知').toUpperCase();
+}
+function finalCarrierValues(list){
+ const values=['cu','ct','cm'];
+ for(const agent of list||[]){
+   const carrier=String(agent.carrier||'unknown').toLowerCase();
+   if(!values.includes(carrier)){ values.push(carrier); }
+ }
+ return values;
+}
+function selectFinalCarrier(carrier){
+ selectedFinalCarrier=carrier;
+ renderCarrierFinal(agentsCache);
+}
+function renderCarrierFinal(list){
+ const carriers=finalCarrierValues(list);
+ if(!carriers.includes(selectedFinalCarrier)){ selectedFinalCarrier=carriers[0]||'cu'; }
+ finalCarrierTabs.innerHTML=carriers.map(carrier=>'<button class="seg '+(carrier===selectedFinalCarrier?'active':'')+'" onclick="selectFinalCarrier(\''+attr(carrier)+'\')">'+finalCarrierLabel(carrier)+'</button>').join('');
+ const candidates=[];
+ for(const agent of list||[]){
+   if(String(agent.carrier||'unknown').toLowerCase()!==selectedFinalCarrier||!agent.result||!agentOnline(agent)){ continue; }
+   const source=agent.display_name||agent.probe_source||agent.agent_id||'-';
+   for(const candidate of agent.result.candidates||[]){ candidates.push({...candidate,_agent_source:source}); }
+ }
+ const regions=finalRegions(settingsCache,candidates,'route_region',selectedFinalCarrier);
+ carrierFinalRows.innerHTML=regions.map(region=>{
+   const route=bestRouteForRegion(candidates,region);
+   const speed=bestSpeedForRegion(candidates,region);
+   const sources=[route?route._agent_source:'',speed?speed._agent_source:''].filter(Boolean);
+   const source=[...new Set(sources)].join(' / ')||'-';
+   return '<tr><td>'+region+'</td><td>'+escapeHTML(route?.ip||'-')+'</td><td>'+escapeHTML(domainForRegion(settingsCache,selectedFinalCarrier,region))+'</td><td>'+(route?fmt(route.ping_rtt_ms||route.avg_rtt_ms||0):'-')+'</td><td>'+escapeHTML(speed?.ip||'-')+'</td><td>'+(speed?fmt(speed.cf_speed_rtt_ms||0):'-')+'</td><td>'+(speed?fmt(speed.cf_speed_mbps||0):'-')+'</td><td>'+escapeHTML(source)+'</td></tr>';
+ }).join('')||'<tr><td colspan="8">'+finalCarrierLabel(selectedFinalCarrier)+'暂无在线 Agent 数据</td></tr>';
 }
 function updateSortHeaders(){
  document.querySelectorAll('th.sortable').forEach(th=>{
@@ -1008,6 +1022,7 @@ let fullStateCache=null;
 let agentsCache=[];
 let agentDrafts=[];
 let agentEditorDirty=false;
+let selectedFinalCarrier='cu';
 let modalScrollY=0;
 function switchSettingsTab(tab){
  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));
@@ -1266,6 +1281,7 @@ function renderAgents(payload){
  const list=(payload&&payload.agents)||[];
  agentsCache=list;
  renderAgentManagement(list);
+ renderCarrierFinal(list);
  if(!list.length){
    agentRows.innerHTML='<tr><td colspan="8">等待 agent 上报</td></tr>';
    return;
@@ -1288,8 +1304,8 @@ async function refresh(){
    fetch('/api/control?ts='+Date.now()).then(r=>r.json()).catch(()=>null),
    fetch('/api/agents?ts='+Date.now()).then(r=>r.json()).catch(()=>null)
  ]);
- renderAgents(agents);
  if(settings&&!settings.error){ settingsCache=settings; }
+ renderAgents(agents);
  if(control&&!control.error){ controlCache=control; applyControl(control); }
  if(seeds&&seeds.text&&!seedDirty&&document.activeElement!==seedInput){ seedInput.value=seeds.text; }
 if(last&&last.candidates){
@@ -1298,7 +1314,6 @@ if(last&&last.candidates){
    best.textContent=last.best?.ip||'-';
    pop.textContent=last.best?.region||last.best?.route_region||'-';
    decision.textContent=decisionLabel(last.decision);
-   renderFinalAreas(last.candidates||[],settingsCache,last.carrier);
    filterSummary(last.candidates||[]);
    rows.innerHTML=sortCandidates(last.candidates||[]).map(c=>candidateRow(c,last)).join('');
    sortRenderedRows();
@@ -1309,7 +1324,6 @@ if(last&&last.candidates){
  best.textContent='-';
  pop.textContent='-';
  decision.textContent=decisionLabel(state?.last_decision)||'等待首次探测';
- renderFinalAreas([],settingsCache,settingsCache?.carrier);
  if(!fullStateCache){
    fullStateCache=await fetch('/api/state?full=1&ts='+Date.now()).then(r=>r.json()).catch(()=>null);
  }

@@ -172,6 +172,30 @@ func TestAgentCandidatesAreGroupedByCarrierAndFreshness(t *testing.T) {
 	}
 }
 
+func TestAgentProgressDoesNotReplaceCompletedLastResult(t *testing.T) {
+	s := New(0, "", "", nil, nil, nil, nil, nil)
+	s.SetLast(&router.CycleResult{
+		Candidates: []router.Candidate{{IP: "104.20.1.1"}},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/agent/report", strings.NewReader(`{
+		"agent_id":"cu-01",
+		"carrier":"cu",
+		"status":"scanning",
+		"result":{"candidates":[{"ip":"104.20.2.2"}]}
+	}`))
+	rec := httptest.NewRecorder()
+	s.handleAgentReport(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	got := s.lastSnapshot()
+	if got == nil || len(got.Candidates) != 1 || got.Candidates[0].IP != "104.20.1.1" {
+		t.Fatalf("progress report replaced completed result: %#v", got)
+	}
+}
+
 func TestAgentRegistryPersistsAndRemovesSnapshots(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agents.json")
 	registry := newAgentRegistry(path)
