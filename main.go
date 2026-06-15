@@ -352,6 +352,7 @@ func settingsCallback(cfg *config.Config) dashboard.SettingsFunc {
 	return func(next *config.Config) error {
 		cfg.ProbeSource = next.ProbeSource
 		cfg.Carrier = next.Carrier
+		cfg.ServerURL = next.ServerURL
 		cfg.CheckIntervalSec = next.CheckIntervalSec
 		cfg.CheckInterval = next.CheckInterval
 		cfg.ProbeAttempts = next.ProbeAttempts

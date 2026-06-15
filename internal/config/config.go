@@ -119,6 +119,7 @@ type SpeedTestConfig struct {
 type ManageSettings struct {
 	ProbeSource                  string              `json:"probe_source"`
 	Carrier                      string              `json:"carrier"`
+	ServerURL                    string              `json:"server_url"`
 	CheckIntervalSec             int                 `json:"check_interval_seconds"`
 	ProbeAttempts                int                 `json:"probe_attempts"`
 	ProbeTimeoutSec              int                 `json:"probe_timeout_seconds"`
@@ -515,6 +516,7 @@ func (c *Config) ManageSettings() ManageSettings {
 	return ManageSettings{
 		ProbeSource:                  c.ProbeSource,
 		Carrier:                      c.Carrier,
+		ServerURL:                    c.ServerURL,
 		CheckIntervalSec:             c.CheckIntervalSec,
 		ProbeAttempts:                c.ProbeAttempts,
 		ProbeTimeoutSec:              c.ProbeTimeoutSec,
@@ -654,6 +656,7 @@ func SaveManageSettings(path string, settings ManageSettings) (*Config, error) {
 	}
 	cfg.ProbeSource = strings.TrimSpace(settings.ProbeSource)
 	cfg.Carrier = strings.TrimSpace(settings.Carrier)
+	cfg.ServerURL = strings.TrimRight(strings.TrimSpace(settings.ServerURL), "/")
 	cfg.CheckIntervalSec = settings.CheckIntervalSec
 	cfg.ProbeAttempts = settings.ProbeAttempts
 	cfg.ProbeTimeoutSec = settings.ProbeTimeoutSec
@@ -699,6 +702,7 @@ func saveManageSettingsNode(path string, cfg *Config) error {
 	mapping := root.Content[0]
 	upsertScalar(mapping, "probe_source", cfg.ProbeSource)
 	upsertScalar(mapping, "carrier", cfg.Carrier)
+	upsertScalar(mapping, "server_url", cfg.ServerURL)
 	upsertScalarWithTag(mapping, "check_interval_seconds", fmt.Sprintf("%d", cfg.CheckIntervalSec), "!!int")
 	upsertScalarWithTag(mapping, "probe_attempts", fmt.Sprintf("%d", cfg.ProbeAttempts), "!!int")
 	upsertScalarWithTag(mapping, "probe_timeout_seconds", fmt.Sprintf("%d", cfg.ProbeTimeoutSec), "!!int")

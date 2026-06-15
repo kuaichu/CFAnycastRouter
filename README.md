@@ -128,9 +128,9 @@ go run . server config.yaml
 VPS 一键安装 agent。脚本会按 CPU 架构直接下载预编译二进制，不需要在 Agent 机器安装 Go、Git 或现场编译。安装脚本和二进制均优先从母鸡下载，母鸡不可用时才回退到 GitHub：
 
 ```bash
-(curl -fsSL http://10.0.0.234:19199/install.sh \
+(curl -fsSL http://172.23.93.195:19199/install.sh \
   || curl -fsSL https://raw.githubusercontent.com/kuaichu/CFAnycastRouter/main/install.sh) \
-  | sudo bash -s -- --server http://10.0.0.234:19199 --carrier auto
+  | sudo bash -s -- --server http://172.23.93.195:19199 --carrier auto
 ```
 
 如果母鸡没有设置 `CFAR_AGENT_TOKEN`，agent 上报接口不强制鉴权。生产环境建议设置相同 token。

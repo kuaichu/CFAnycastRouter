@@ -7,7 +7,7 @@ carrier: cu
 agent_token_env: CFAR_AGENT_TOKEN
 # agent 模式才需要：
 # agent_id: vps-hk-01
-# server_url: http://10.0.0.234:19199
+server_url: http://172.23.93.195:19199
 trace_host: "cloudflare.com"
 trace_path: "/cdn-cgi/trace"
 probe_port: 443

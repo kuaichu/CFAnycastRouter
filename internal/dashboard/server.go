@@ -730,7 +730,7 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 </section>
 <section id="settings-agent" class="settings-pane" style="display:none">
 <div class="form-grid">
-<div class="field"><label>母鸡地址</label><input id="agentServerURL" oninput="updateAgentInstallCommand()"></div>
+<div class="field"><label>母鸡地址</label><input id="agentServerURL" oninput="this.dataset.autoDefault='0';updateAgentInstallCommand()"></div>
 <div class="field"><label>指定 Agent ID（可选）</label><input id="agentInstallID" placeholder="留空，由目标 VPS 首次安装时自动生成" oninput="updateAgentInstallCommand()"><div class="small">仅迁移或重连已有 Agent 时填写；普通新装请保持为空。</div></div>
 <div class="field"><label>运营商</label><select id="agentInstallCarrier" onchange="updateAgentInstallCommand()"><option value="auto">自动识别</option><option value="cu">联通</option><option value="ct">电信</option><option value="cm">移动</option><option value="unknown">未知</option></select></div>
 <div class="field"><label>共享 Token</label><input id="agentInstallToken" placeholder="可选" oninput="updateAgentInstallCommand()"></div>
@@ -1100,10 +1100,12 @@ function shellQuote(v){
  return "'"+v.replace(/'/g,"'\\''")+"'";
 }
 function defaultAgentServerURL(){
- return window.location.origin||'http://10.0.0.234:19199';
+ const configured=(settingsCache?.server_url||'').trim().replace(/\/+$/,'');
+ return configured||'http://172.23.93.195:19199';
 }
 function resetAgentInstallCommand(){
  agentServerURL.value=defaultAgentServerURL();
+ agentServerURL.dataset.autoDefault='1';
  agentInstallID.value='';
  agentInstallCarrier.value='auto';
  agentInstallToken.value='';
@@ -1116,7 +1118,7 @@ function updateAgentInstallCommand(){
  const token=(agentInstallToken.value||'').trim();
  const fallbackInstall='https://raw.githubusercontent.com/kuaichu/CFAnycastRouter/main/install.sh';
  const parts=[
-   '(curl -fsSL '+shellQuote(server+'/install.sh')+' || curl -fsSL '+shellQuote(fallbackInstall)+')',
+   '(curl -fsSL --connect-timeout 5 --max-time 30 '+shellQuote(server+'/install.sh')+' || curl -fsSL --connect-timeout 5 --max-time 30 '+shellQuote(fallbackInstall)+')',
    '| sudo bash -s --',
    '--server '+shellQuote(server),
    '--carrier '+shellQuote(carrier)
@@ -1139,6 +1141,10 @@ async function copyAgentInstallCommand(){
 function fillSettings(s){
  setProbeSource.value=s.probe_source||'';
  setCarrier.value=s.carrier||'auto';
+ if(!agentServerURL.value||agentServerURL.dataset.autoDefault==='1'){
+   agentServerURL.value=defaultAgentServerURL();
+   agentServerURL.dataset.autoDefault='1';
+ }
  setInterval.value=s.check_interval_seconds||300;
  setProbeAttempts.value=s.probe_attempts||5;
  setProbeTimeout.value=s.probe_timeout_seconds||3;
@@ -1200,6 +1206,7 @@ function collectSettings(){
  return {
    probe_source:setProbeSource.value.trim(),
    carrier:setCarrier.value,
+   server_url:(agentServerURL.value||defaultAgentServerURL()).trim().replace(/\/+$/,''),
    check_interval_seconds:Number(setInterval.value)||300,
    probe_attempts:Number(setProbeAttempts.value)||5,
    probe_timeout_seconds:Number(setProbeTimeout.value)||3,

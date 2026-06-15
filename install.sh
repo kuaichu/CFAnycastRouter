@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SERVER_URL="http://10.0.0.234:19199"
+SERVER_URL="http://172.23.93.195:19199"
 AGENT_ID=""
 FORCE_AGENT_ID="false"
 PROBE_SOURCE=""
@@ -14,10 +14,10 @@ BIN_PATH="${CFAR_BIN_PATH:-/usr/local/bin/cf-router}"
 usage() {
   cat <<'EOF'
 Usage:
-  curl -fsSL http://10.0.0.234:19199/install.sh | sudo bash -s -- [options]
+  curl -fsSL http://172.23.93.195:19199/install.sh | sudo bash -s -- [options]
 
 Options:
-  --server URL       Mother server URL, default: http://10.0.0.234:19199
+  --server URL       Mother server URL, default: http://172.23.93.195:19199
   --id ID           Explicit Agent ID for migration/reconnect only. Default: auto-generate.
   --force-id        Allow replacing an existing persisted Agent ID.
   --source TEXT     Probe source label, default: hostname
