@@ -603,14 +603,16 @@ button.ghost{background:transparent}button.danger{background:#3a151a;border-colo
 .small{font-size:12px;color:var(--muted);margin-top:8px}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;padding:24px;z-index:10;overscroll-behavior:none}
 .modal.open{display:flex}
-.modal-card{width:min(980px,calc(100vw - 48px));max-height:calc(100vh - 48px);overflow:auto;overscroll-behavior:contain;background:linear-gradient(135deg,#13202c,#102d2d);border:1px solid #31546a;border-radius:12px;padding:26px;box-shadow:0 20px 80px rgba(0,0,0,.45)}
+.modal-card{width:min(1120px,calc(100vw - 48px));max-height:calc(100vh - 48px);overflow:auto;overscroll-behavior:contain;background:linear-gradient(135deg,#101820,#0f2929);border:1px solid #31546a;border-radius:12px;padding:24px;box-shadow:0 20px 80px rgba(0,0,0,.45)}
 .modal-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:18px}
-.modal h2{font-size:24px;margin:0}.tabs{display:flex;gap:16px;border-bottom:1px solid var(--line);margin-bottom:18px}
-.tab{padding:10px 0;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent}.tab.active{color:var(--ok);border-color:var(--ok)}
-.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px}.field label{display:block;color:#c7d5e8;font-weight:600;margin-bottom:6px}
-.field input,.field select{width:100%;box-sizing:border-box;background:#071018;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font:14px ui-monospace,SFMono-Regular,Consolas,monospace}
+.modal h2{font-size:24px;margin:0}.settings-layout{display:grid;grid-template-columns:170px minmax(0,1fr);gap:18px;align-items:start}.tabs{position:sticky;top:0;display:grid;gap:6px;border:1px solid var(--line);border-radius:8px;padding:6px;background:rgba(7,16,24,.34);margin:0}
+.tab{padding:9px 10px;color:var(--muted);cursor:pointer;border:1px solid transparent;border-radius:6px}.tab.active{color:#d8fff0;background:#123325;border-color:#236a4b}.tab:hover{color:var(--text);border-color:#344255}
+.settings-content{min-width:0}.settings-pane{display:block}.settings-card{background:rgba(18,24,32,.72);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:12px}.settings-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.settings-card-title{font-weight:700;color:var(--text)}.settings-card .small{margin-top:4px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}.form-grid.compact{grid-template-columns:repeat(4,minmax(0,1fr))}.field label{display:block;color:#c7d5e8;font-weight:600;margin-bottom:6px}
+.field input,.field select{width:100%;box-sizing:border-box;background:#071018;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:14px ui-monospace,SFMono-Regular,Consolas,monospace}
 .field input:focus,.field select:focus{outline:none;border-color:#18c99b;box-shadow:0 0 0 3px rgba(24,201,155,.14)}
-.settings-group-title{margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--line);color:var(--text);font-size:13px;font-weight:700}.settings-group-title:first-child{margin-top:0;padding-top:0;border-top:0}
+.settings-group-title{margin:0 0 10px;color:var(--text);font-size:13px;font-weight:700}
+.advanced-settings{border:1px solid var(--line);border-radius:8px;background:rgba(7,16,24,.24);padding:10px 12px;margin-top:12px}.advanced-settings summary{cursor:pointer;color:#c7d5e8;font-weight:700}.advanced-settings .form-grid{margin-top:12px}
 .check-row{display:flex;gap:8px;align-items:center;color:#c7d5e8;margin:10px 0}.check-row input{width:auto}
 .record-list{display:grid;gap:10px;margin-top:10px}.record-row{display:grid;grid-template-columns:80px 72px 72px 1fr 80px 40px;gap:8px;align-items:center}
 .record-row input,.record-row select{background:#071018;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px}
@@ -635,7 +637,7 @@ button.ghost{background:transparent}button.danger{background:#3a151a;border-colo
 table{width:100%;border-collapse:collapse;margin-top:16px;background:var(--panel);border:1px solid var(--line)}
 th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;font-variant-numeric:tabular-nums}
 th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--text)}th.sortable.active{color:var(--ok)}tr.best td{color:var(--ok)}tr.bad td{color:var(--bad)}tr.hot td{color:var(--ok)}
-@media(max-width:800px){.grid,.settings,.form-grid,.agent-editor-grid{grid-template-columns:1fr}.record-row{grid-template-columns:1fr 1fr}.record-row input:nth-child(3){grid-column:1/-1}main{padding:18px}.agent-manage-head,.agent-editor-foot,.final-head{align-items:stretch;flex-direction:column}.agent-editor-actions,.final-carriers{justify-content:flex-start}th:nth-child(4),td:nth-child(4),th:nth-child(8),td:nth-child(8){display:none}}
+@media(max-width:800px){.grid,.settings,.form-grid,.form-grid.compact,.agent-editor-grid,.settings-layout{grid-template-columns:1fr}.tabs{position:static;display:flex;overflow:auto}.record-row{grid-template-columns:1fr 1fr}.record-row input:nth-child(3){grid-column:1/-1}main{padding:18px}.agent-manage-head,.agent-editor-foot,.final-head{align-items:stretch;flex-direction:column}.agent-editor-actions,.final-carriers{justify-content:flex-start}th:nth-child(4),td:nth-child(4),th:nth-child(8),td:nth-child(8){display:none}}
 </style>
 </head>
 <body><main>
@@ -670,80 +672,108 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <div id="settingsModal" class="modal" onclick="if(event.target===this)closeSettings()">
 <div class="modal-card">
 <div class="modal-head"><div><h2>管理设置</h2><div class="hint">修改后会写入配置文件，下一轮检测使用新设置。</div></div><button class="icon-btn" onclick="closeSettings()">×</button></div>
+<div class="settings-layout">
 <div class="tabs"><div class="tab active" data-tab="basic" onclick="switchSettingsTab('basic')">基础设置</div><div class="tab" data-tab="budget" onclick="switchSettingsTab('budget')">扫描预算</div><div class="tab" data-tab="speed" onclick="switchSettingsTab('speed')">官方测速</div><div class="tab" data-tab="dns" onclick="switchSettingsTab('dns')">地区解析</div><div class="tab" data-tab="agent" onclick="switchSettingsTab('agent')">Agent 安装</div><div class="tab" data-tab="agents" onclick="switchSettingsTab('agents')">Agent 管理</div></div>
+<div class="settings-content">
 <section id="settings-basic" class="settings-pane">
+<input id="setProbeSource" type="hidden">
+<input id="setCarrier" type="hidden" value="auto">
+<div class="settings-card">
+<div class="settings-card-head"><div><div class="settings-card-title">母鸡调度</div><div class="small">安装命令和在线 Agent 都使用这里的母鸡地址。</div></div></div>
 <div class="form-grid">
-<div class="field"><label>探测源说明</label><input id="setProbeSource" placeholder="宁波联通"></div>
-<div class="field"><label>运营商策略</label><select id="setCarrier"><option value="auto">自动识别</option><option value="cu">联通</option><option value="ct">电信</option><option value="cm">移动</option><option value="unknown">未知</option></select></div>
+<div class="field"><label>母鸡地址</label><input id="agentServerURL" oninput="this.dataset.autoDefault='0';updateAgentInstallCommand()" placeholder="http://172.23.93.195:19199"></div>
 <div class="field"><label>检测间隔（秒）</label><input id="setInterval" type="number" min="10" step="10"></div>
+</div>
 </div>
 </section>
 <section id="settings-budget" class="settings-pane" style="display:none">
+<div class="settings-card">
 <div class="settings-group-title">单 IP 探测</div>
 <div class="form-grid">
 <div class="field"><label>每个 IP 探测次数</label><input id="setProbeAttempts" type="number" min="1" max="20" step="1"></div>
 <div class="field"><label>单次探测超时（秒）</label><input id="setProbeTimeout" type="number" min="1" max="30" step="1"></div>
 <div class="field"><label>本轮路由追踪预算</label><input id="setTraceBudget" type="number" min="1" step="1"></div>
-<div class="field"><label>尖刺判定阈值（ms）</label><input id="setSpikeThreshold" type="number" min="1" step="5"></div>
-<div class="field"><label>尖刺倍率</label><input id="setSpikeMultiplier" type="number" min="1" step="0.1"></div>
 </div>
+</div>
+<div class="settings-card">
 <div class="settings-group-title">段抽样预算</div>
 <div class="form-grid">
 <div class="field"><label>种子段预检上限 / 轮</label><input id="setSeedPreflight" type="number" min="1" step="1"></div>
 <div class="field"><label>种子段上限 / 轮</label><input id="setSeedSegments" type="number" min="1" step="1"></div>
 <div class="field"><label>学习段上限 / 轮</label><input id="setLearnedSegments" type="number" min="0" step="1"></div>
 <div class="field"><label>每段样本数 / 轮</label><input id="setSamplesPerSegment" type="number" min="1" step="1"></div>
+</div>
+<details class="advanced-settings">
+<summary>高级抽样与学习参数</summary>
+<div class="form-grid">
 <div class="field"><label>段内 IP 步进</label><input id="setSampleStep" type="number" min="1" step="1"></div>
 <div class="field"><label>种子 CIDR 步进</label><input id="setSeedCIDRStep" type="number" min="1" step="1"></div>
-</div>
-<div class="settings-group-title">学习与热点</div>
-<div class="form-grid">
 <div class="field"><label>晋级最少样本</label><input id="setPromoteMinSamples" type="number" min="1" step="1"></div>
 <div class="field"><label>晋级命中率（%）</label><input id="setPromoteProbability" type="number" min="1" max="100" step="1"></div>
 <div class="field"><label>每段热点 IP 上限</label><input id="setHotMaxPerSegment" type="number" min="1" step="1"></div>
 <div class="field"><label>热点最高得分</label><input id="setHotMaxScore" type="number" min="1" step="1"></div>
+<div class="field"><label>尖刺阈值（ms）</label><input id="setSpikeThreshold" type="number" min="1" step="5"></div>
+<div class="field"><label>尖刺倍率</label><input id="setSpikeMultiplier" type="number" min="1" step="0.1"></div>
 </div>
-<div class="small">母鸡统一下发这些参数，在线 Agent 会在下一轮任务开始时采用新预算。</div>
+</details>
+</div>
 </section>
 <section id="settings-speed" class="settings-pane" style="display:none">
+<div class="settings-card">
 <label class="check-row"><input id="setSpeedEnabled" type="checkbox"> 启用 Cloudflare 官方下载测速</label>
-<div class="form-grid">
-<div class="field"><label>测速域名</label><input id="setSpeedHost" placeholder="speed.cloudflare.com"></div>
-<div class="field"><label>测速路径</label><input id="setSpeedPath" placeholder="/__down"></div>
+<input id="setSpeedHost" type="hidden" value="speed.cloudflare.com">
+<input id="setSpeedPath" type="hidden" value="/__down">
+<div class="form-grid compact">
 <div class="field"><label>每次下载字节数</label><input id="setSpeedBytes" type="number" min="4096" max="4194304" step="4096"></div>
 <div class="field"><label>短名单数量</label><input id="setSpeedTopN" type="number" min="1" max="20" step="1"></div>
 </div>
-<div class="small">先按基础延迟、丢包、抖动和路由评分筛出短名单，再直连这些 IP 的 443 端口，SNI/Host 使用 speed.cloudflare.com，请求 /__down?bytes=N。</div>
+</div>
 </section>
 <section id="settings-dns" class="settings-pane" style="display:none">
+<div class="settings-card">
 <label class="check-row"><input id="setDnsEnabled" type="checkbox"> 启用 Cloudflare DNS 动态解析</label>
 <div class="form-grid">
 <div class="field"><label>Zone Name</label><input id="setZoneName" placeholder="yeque.top"></div>
+</div>
+<details class="advanced-settings">
+<summary>Cloudflare 连接参数</summary>
+<div class="form-grid">
 <div class="field"><label>Zone ID</label><input id="setZoneID" placeholder="可选，填了更快"></div>
 <div class="field"><label>Token 环境变量</label><input id="setTokenEnv" placeholder="CLOUDFLARE_API_TOKEN"></div>
 <div class="field"><label>TTL</label><input id="setTTL" type="number" min="60" step="60"></div>
 </div>
-<label class="check-row"><input id="setProxied" type="checkbox"> 开启 Cloudflare 代理（当前建议关闭）</label>
+<label class="check-row"><input id="setProxied" type="checkbox"> 开启 Cloudflare 代理</label>
+</details>
+</div>
+<div class="settings-card">
 <div class="field"><label>按运营商和地区解析域名</label><div id="recordList" class="record-list"></div></div>
 <div class="actions"><button onclick="addRecordRow()">添加地区记录</button><button class="primary" onclick="autoGenerateDNSRecords()">自动生成解析记录</button></div>
 <div id="dnsGenerateMsg" class="small">自动生成会按 Zone Name 补齐 cu/ct/cm × HK/US/JP/SG，例如 cu-cf-us.example.com。</div>
+</div>
 </section>
 <section id="settings-agent" class="settings-pane" style="display:none">
+<div class="settings-card">
 <div class="form-grid">
-<div class="field"><label>母鸡地址</label><input id="agentServerURL" oninput="this.dataset.autoDefault='0';updateAgentInstallCommand()"></div>
-<div class="field"><label>指定 Agent ID（可选）</label><input id="agentInstallID" placeholder="留空，由目标 VPS 首次安装时自动生成" oninput="updateAgentInstallCommand()"><div class="small">仅迁移或重连已有 Agent 时填写；普通新装请保持为空。</div></div>
 <div class="field"><label>运营商</label><select id="agentInstallCarrier" onchange="updateAgentInstallCommand()"><option value="auto">自动识别</option><option value="cu">联通</option><option value="ct">电信</option><option value="cm">移动</option><option value="unknown">未知</option></select></div>
 <div class="field"><label>共享 Token</label><input id="agentInstallToken" placeholder="可选" oninput="updateAgentInstallCommand()"></div>
 </div>
+<details class="advanced-settings">
+<summary>迁移 / 重连已有 Agent</summary>
+<div class="field"><label>指定 Agent ID（可选）</label><input id="agentInstallID" placeholder="留空，由目标 VPS 首次安装时自动生成" oninput="updateAgentInstallCommand()"></div>
+</details>
 <div class="field"><label>一键安装命令</label><textarea id="agentInstallCommand" class="seedbox" readonly spellcheck="false"></textarea></div>
 <div class="actions"><button class="primary" onclick="copyAgentInstallCommand()">复制命令</button><button onclick="resetAgentInstallCommand()">恢复默认</button></div>
-<div id="agentInstallMsg" class="small">新装会在目标 VPS 自动生成并持久化唯一 ID；重复安装沿用原 ID，不会覆盖其他 Agent。</div>
+<div id="agentInstallMsg" class="small"></div>
+</div>
 </section>
 <section id="settings-agents" class="settings-pane" style="display:none">
+<div class="settings-card">
 <div class="agent-manage-head"><div><div class="k">预期在线 Agent</div><div id="agentManageSummary" class="agent-summary"><span><strong>0</strong>节点</span><span><strong>0</strong>在线</span></div></div><button class="primary" onclick="addAgentDraft()">＋ 新增 Agent</button></div>
 <div id="agentManageList" class="agent-manage-list" oninput="agentEditorDirty=true" onchange="agentEditorDirty=true"><div class="agent-empty">尚未配置 Agent</div></div>
-<div class="small">母鸡端配置优先于 Agent 本地配置。保存后，在线 Agent 会在下一轮拉取任务时采用新的地区和运营商。</div>
+</div>
 </section>
+</div>
+</div>
 <div id="settingsMsg" class="small"></div>
 <div class="modal-actions"><button onclick="closeSettings()">关闭</button><button id="saveSettingsBtn" class="primary" onclick="saveSettings()">保存设置</button></div>
 </div>
