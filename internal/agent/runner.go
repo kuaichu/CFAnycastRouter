@@ -320,9 +320,18 @@ func hostname() string {
 func bestCandidate(candidates []router.Candidate) *router.Candidate {
 	for i := range candidates {
 		c := candidates[i]
-		if c.Error == "" && !c.Quarantined && c.Region != "" && c.Region != "unknown" && !math.IsInf(c.Score, 0) {
+		if c.Error == "" && !c.Quarantined && selectableStage(c.Stage) && c.Region != "" && c.Region != "unknown" && c.Region != "preflight" && !math.IsInf(c.Score, 0) {
 			return &c
 		}
 	}
 	return nil
+}
+
+func selectableStage(stage string) bool {
+	switch stage {
+	case "seed", "seed-sample", "learned", "hot", "lookup-reference", "lookup-sample":
+		return true
+	default:
+		return false
+	}
 }

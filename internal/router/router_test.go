@@ -33,3 +33,20 @@ func TestEffectiveRegionDoesNotFallBackToCFColo(t *testing.T) {
 		t.Fatalf("effectiveRegion with local route=%s/%s want HK/route", region, source)
 	}
 }
+
+func TestSelectableCandidateSkipsSegmentProbe(t *testing.T) {
+	candidates := []Candidate{
+		{IP: "172.67.177.1", Stage: "segment-probe", Region: "preflight", RouteRegion: "US", Score: 10},
+		{IP: "104.20.1.1", Stage: "seed-sample", Region: "US", RouteRegion: "US", Score: 200},
+	}
+
+	if got := firstHealthy(candidates); got == nil || got.IP != "104.20.1.1" {
+		t.Fatalf("firstHealthy selected %#v, want seed-sample", got)
+	}
+	if got := firstHealthyInRouteRegionForType(candidates, "US", "A"); got == nil || got.IP != "104.20.1.1" {
+		t.Fatalf("route-region candidate selected %#v, want seed-sample", got)
+	}
+	if isSelectableCandidate(candidates[0]) {
+		t.Fatal("segment-probe should not be selectable")
+	}
+}

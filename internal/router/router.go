@@ -500,7 +500,7 @@ func (r *Router) applySpeedShortlist(candidates []Candidate) {
 		if len(selected) >= r.cfg.SpeedTest.TopN {
 			break
 		}
-		if candidates[i].Error != "" || candidates[i].Quarantined || candidates[i].Region == "" || candidates[i].Region == "unknown" || math.IsInf(candidates[i].Score, 0) {
+		if !isSelectableCandidate(candidates[i]) {
 			continue
 		}
 		selected = append(selected, i)
@@ -607,7 +607,7 @@ func (r *Router) shouldSwitch(best *Candidate, candidates []Candidate) (bool, st
 
 func firstHealthy(candidates []Candidate) *Candidate {
 	for i := range candidates {
-		if candidates[i].Error == "" && candidates[i].Region != "" && candidates[i].Region != "unknown" && !math.IsInf(candidates[i].Score, 0) {
+		if isSelectableCandidate(candidates[i]) {
 			return &candidates[i]
 		}
 	}
@@ -632,7 +632,7 @@ func firstHealthyInRegionForType(candidates []Candidate, region, recordType stri
 		if recordType == "AAAA" && (ip == nil || ip.To4() != nil) {
 			continue
 		}
-		if candidates[i].Error == "" && !candidates[i].Quarantined && !math.IsInf(candidates[i].Score, 0) {
+		if isSelectableCandidate(candidates[i]) {
 			return &candidates[i]
 		}
 	}
@@ -655,7 +655,7 @@ func firstHealthyInRouteRegionForType(candidates []Candidate, region, recordType
 		if recordType == "AAAA" && (ip == nil || ip.To4() != nil) {
 			continue
 		}
-		if candidates[i].Error == "" && !candidates[i].Quarantined && !math.IsInf(candidates[i].Score, 0) {
+		if isSelectableCandidate(candidates[i]) {
 			score := dnsRouteScore(candidates[i])
 			if score < bestScore {
 				best = &candidates[i]
@@ -664,6 +664,18 @@ func firstHealthyInRouteRegionForType(candidates []Candidate, region, recordType
 		}
 	}
 	return best
+}
+
+func isSelectableCandidate(c Candidate) bool {
+	if c.Error != "" || c.Quarantined || math.IsInf(c.Score, 0) {
+		return false
+	}
+	switch c.Stage {
+	case "seed", "seed-sample", "learned", "hot", "lookup-reference", "lookup-sample":
+	default:
+		return false
+	}
+	return isKnownRegion(c.Region)
 }
 
 func dnsRouteScore(c Candidate) float64 {

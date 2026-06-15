@@ -59,3 +59,13 @@ func TestPostReportAcceptsFailedCandidatesWithInfiniteScore(t *testing.T) {
 		t.Fatalf("report contains non-finite score: %#v", received.Result.Candidates[0])
 	}
 }
+
+func TestBestCandidateSkipsSegmentProbe(t *testing.T) {
+	got := bestCandidate([]router.Candidate{
+		{IP: "172.67.177.1", Stage: "segment-probe", Region: "preflight", Score: 10},
+		{IP: "104.20.1.1", Stage: "seed-sample", Region: "US", Score: 200},
+	})
+	if got == nil || got.IP != "104.20.1.1" {
+		t.Fatalf("bestCandidate=%#v, want seed-sample", got)
+	}
+}

@@ -875,9 +875,18 @@ function candidateValue(c,key){
    default: return '';
  }
 }
+function isSelectableStage(stage){
+ return ['seed','seed-sample','learned','hot','lookup-reference','lookup-sample'].includes(String(stage||''));
+}
+function candidateStageRank(stage){
+ const order={'hot':0,'learned':1,'seed':2,'seed-sample':3,'lookup-reference':4,'lookup-sample':5,'segment-probe':8};
+ return order[String(stage||'')]??7;
+}
 function sortCandidates(candidates){
  const arr=[...(candidates||[])].filter(c=>matchesRegion(c));
  arr.sort((a,b)=>{
+   const ar=candidateStageRank(a.stage), br=candidateStageRank(b.stage);
+   if(ar!==br){ return ar-br; }
    const av=candidateValue(a,sortState.key);
    const bv=candidateValue(b,sortState.key);
    let cmp=0;
@@ -906,6 +915,7 @@ function rowAttrs(values){
  return Object.entries(values).map(([k,v])=>' data-'+k+'="'+attr(v)+'"').join('');
 }
 function isHealthy(c){ return c&&!c.error&&!c.quarantined&&Number.isFinite(c.score); }
+function isSelectableCandidate(c){ return isHealthy(c)&&isSelectableStage(c.stage)&&candidateRegion(c)!=='unknown'&&candidateRegion(c)!=='preflight'; }
 function routeDnsScore(c){
  const rtt=c.ping_rtt_ms>0?c.ping_rtt_ms:(c.avg_rtt_ms>0?c.avg_rtt_ms:9999);
  return rtt+(c.ping_loss_rate||0)*800+(c.loss_rate||0)*300+(c.spike_rate||0)*80;
@@ -930,7 +940,7 @@ function finalRegions(settings,candidates,field,carrier){
 function bestRouteForRegion(candidates,region){
  let best=null, bestScore=Number.POSITIVE_INFINITY;
  for(const c of candidates||[]){
-   if(!isHealthy(c)||String(c.route_region||'').toUpperCase()!==region){ continue; }
+   if(!isSelectableCandidate(c)||String(c.route_region||'').toUpperCase()!==region){ continue; }
    const score=routeDnsScore(c);
    if(score<bestScore){ best=c; bestScore=score; }
  }
@@ -939,7 +949,7 @@ function bestRouteForRegion(candidates,region){
 function bestSpeedForRegion(candidates,region){
  let best=null, bestScore=Number.POSITIVE_INFINITY;
  for(const c of candidates||[]){
-   if(!isHealthy(c)||String(c.route_region||c.region||'').toUpperCase()!==region||!(c.cf_speed_rtt_ms>0)){ continue; }
+   if(!isSelectableCandidate(c)||String(c.route_region||c.region||'').toUpperCase()!==region||!(c.cf_speed_rtt_ms>0)){ continue; }
    const score=(c.cf_speed_rtt_ms||9999)+(c.cf_speed_jitter_ms||0)*0.5+(c.cf_speed_loss_rate||0)*800;
    if(score<bestScore){ best=c; bestScore=score; }
  }
