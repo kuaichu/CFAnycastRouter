@@ -673,6 +673,9 @@ func candidateRecordRegion(c Candidate) string {
 	if region := normalizeRegion(c.Region); isKnownRegion(region) {
 		return region
 	}
+	if region := normalizeRegion(c.CFRegion); isKnownRegion(region) {
+		return region
+	}
 	return "unknown"
 }
 
@@ -685,7 +688,7 @@ func isSelectableCandidate(c Candidate) bool {
 	default:
 		return false
 	}
-	return isKnownRegion(c.Region)
+	return isKnownRegion(candidateRecordRegion(c))
 }
 
 func dnsRouteScore(c Candidate) float64 {

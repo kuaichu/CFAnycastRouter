@@ -53,10 +53,13 @@ func TestSelectableCandidateSkipsSegmentProbe(t *testing.T) {
 
 func TestRouteRegionCandidateFallsBackToEffectiveRegion(t *testing.T) {
 	candidates := []Candidate{
-		{IP: "104.20.1.1", Stage: "seed-sample", Region: "JP", Score: 50},
+		{IP: "104.20.1.1", Stage: "seed-sample", Region: "unknown", CFRegion: "JP", Score: 50},
 	}
 
 	if got := firstHealthyInRouteRegionForType(candidates, "JP", "A"); got == nil || got.IP != "104.20.1.1" {
 		t.Fatalf("route-region fallback selected %#v, want JP seed-sample", got)
+	}
+	if !isSelectableCandidate(candidates[0]) {
+		t.Fatal("candidate with CF region fallback should be selectable")
 	}
 }
