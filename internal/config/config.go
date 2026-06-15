@@ -388,6 +388,7 @@ func (c *Config) normalize() error {
 			})
 		}
 	}
+	c.fillDefaultCloudflareDNSRecords()
 	c.SpeedTest.Host = strings.TrimSpace(strings.TrimSuffix(c.SpeedTest.Host, "."))
 	if c.SpeedTest.Host == "" {
 		c.SpeedTest.Host = "speed.cloudflare.com"
@@ -436,6 +437,51 @@ func (c *Config) normalize() error {
 	c.ProbeTimeout = time.Duration(c.ProbeTimeoutSec) * time.Second
 	c.CheckInterval = time.Duration(c.CheckIntervalSec) * time.Second
 	return nil
+}
+
+func (c *Config) fillDefaultCloudflareDNSRecords() {
+	if !c.CloudflareDNS.Enabled || c.CloudflareDNS.ZoneName == "" {
+		return
+	}
+	base := strings.TrimPrefix(strings.TrimSuffix(c.CloudflareDNS.ZoneName, "."), ".")
+	if base == "" {
+		return
+	}
+	seen := make(map[string]struct{}, len(c.CloudflareDNS.RecordSets))
+	for _, record := range c.CloudflareDNS.RecordSets {
+		if key := dnsRecordKey(record.Carrier, record.Region, record.Type); key != "" {
+			seen[key] = struct{}{}
+		}
+	}
+	for _, carrier := range []string{"cu", "ct", "cm"} {
+		for _, region := range []string{"HK", "US", "JP", "SG"} {
+			key := dnsRecordKey(carrier, region, "A")
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			c.CloudflareDNS.RecordSets = append(c.CloudflareDNS.RecordSets, DNSRecordConfig{
+				Enabled: true,
+				Carrier: carrier,
+				Region:  region,
+				Type:    "A",
+				Domain:  fmt.Sprintf("%s-cf-%s.%s", carrier, strings.ToLower(region), base),
+			})
+			seen[key] = struct{}{}
+		}
+	}
+}
+
+func dnsRecordKey(carrier, region, recordType string) string {
+	carrier = NormalizeCarrier(carrier)
+	region = NormalizePOP(region)
+	recordType = strings.ToUpper(strings.TrimSpace(recordType))
+	if recordType == "" {
+		recordType = "A"
+	}
+	if carrier == "" || region == "" || recordType == "" {
+		return ""
+	}
+	return carrier + "|" + region + "|" + recordType
 }
 
 func NormalizeCarrier(value string) string {
