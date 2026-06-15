@@ -765,7 +765,6 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <button class="seg" data-region="US">US</button>
 <button class="seg" data-region="JP">JP</button>
 <button class="seg" data-region="SG">SG</button>
-<button class="seg" data-region="unknown">unknown</button>
 </div><div id="filterInfo" class="hint">显示全部地区</div></div>
 <table><thead><tr>
 <th class="sortable" data-sort="ip">IP</th>
@@ -903,16 +902,16 @@ function knownRegion(v){
 }
 function candidateRegion(c){ return knownRegion(c?.route_region)||knownRegion(c?.region)||knownRegion(c?.cf_region)||'unknown'; }
 function matchesRegion(c){
- if(regionFilter==='ALL'){ return true; }
  const region=candidateRegion(c);
- if(regionFilter==='unknown'){ return !region||region==='unknown'||region==='-'; }
+ if(region==='unknown'){ return false; }
+ if(regionFilter==='ALL'){ return true; }
  return region===regionFilter;
 }
 function filterSummary(candidates){
  const total=(candidates||[]).length;
  const shown=(candidates||[]).filter(c=>matchesRegion(c)).length;
  const carrier=finalCarrierLabel(selectedFinalCarrier);
- filterInfo.textContent=regionFilter==='ALL'?carrier+'全部地区，共 '+total+' 条':carrier+' / '+regionFilter+'，'+shown+' / '+total+' 条';
+ filterInfo.textContent=regionFilter==='ALL'?carrier+'全部已知地区，'+shown+' / '+total+' 条':carrier+' / '+regionFilter+'，'+shown+' / '+total+' 条';
 }
 function attr(v){ return String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 function rowAttrs(values){
@@ -935,7 +934,7 @@ function finalRegions(settings,candidates,field,carrier){
  const dns=settings?.cloudflare_dns||{};
  const records=(dns.record_sets&&dns.record_sets.length)?dns.record_sets:[];
  records.forEach(r=>{ if(String(r.carrier||settings?.carrier||'unknown').toLowerCase()===carrier&&r.region){ set.add(String(r.region).toUpperCase()); } });
- (candidates||[]).forEach(c=>{ const v=field==='route_region'?candidateRegion(c):knownRegion(c[field]); if(v){ set.add(v); } });
+ (candidates||[]).forEach(c=>{ const v=field==='route_region'?candidateRegion(c):knownRegion(c[field]); if(v&&v!=='unknown'){ set.add(v); } });
  return [...set].sort((a,b)=>{
    const order={HK:1,US:2,JP:3,SG:4,EU:5};
    return (order[a]||99)-(order[b]||99)||a.localeCompare(b);
@@ -1039,7 +1038,7 @@ function candidateRow(c,last){
  const skipped=Boolean(c.error||c.quarantined);
  const score=skipped?'跳过':(Number.isFinite(c.score)?c.score.toFixed(1):'跳过');
  const colo=(c.observed_colo&&c.observed_pop&&c.observed_colo!==c.observed_pop)?(c.observed_colo+' / '+c.observed_pop):(c.observed_colo||c.observed_pop||'-');
- const region=(c.region||c.route_region||'-');
+ const region=candidateRegion(c);
  const routeRegion=(c.route_region||'-');
  const hint=[c.route_hint_ip,c.route_city,c.route_isp].filter(Boolean).join(' ');
  const source=regionSourceLabel(c.region_source);
