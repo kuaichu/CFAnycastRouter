@@ -44,6 +44,30 @@ func TestParseEmbeddedGeoInfos(t *testing.T) {
 	}
 }
 
+func TestNextTraceRawReportPicksJapanCloudflareHop(t *testing.T) {
+	target := "108.162.198.237"
+	raw := `1|192.168.1.1||0.24||||||||
+2|60.178.228.1||2.26|4134|中国|浙江省|宁波市||chinatelecom.com.cn  电信|29.8683|121.5440
+3|61.175.31.181||3.15|4134|中国|浙江|宁波||chinatelecom.com.cn|29.8683|121.5440
+8|202.97.42.166||52.06|4134|日本|东京都|东京|CT-POP|chinatelecom.com.cn  电信|35.6804|139.7690
+9|203.215.237.102||50.87||日本|东京都|东京||电信|35.6804|139.7690
+10|103.22.201.21||61.14|13335|日本|东京都|东京||cloudflare.com|35.6804|139.7690
+11|108.162.198.237||39.64|13335|Anycast||||cloudflare.com||`
+
+	hops := parseHops(raw)
+	infos := parseEmbeddedGeoInfos(raw)
+	pick := pickRouteHint(target, hops, infos)
+	if pick == nil {
+		t.Fatal("expected route hint from NextTrace raw report")
+	}
+	if pick.Query != "103.22.201.21" {
+		t.Fatalf("hint IP=%s want 103.22.201.21", pick.Query)
+	}
+	if got := regionFromGeo(*pick); got != "JP" {
+		t.Fatalf("route hint region=%s want JP; info=%#v", got, *pick)
+	}
+}
+
 func TestNTRReportArgsFromRaw(t *testing.T) {
 	got, ok := ntrReportArgs([]string{"-4", "--raw", "--icmp-mode", "2", "-d", "disable-geoip", "-q", "1", "{ip}"})
 	if !ok {

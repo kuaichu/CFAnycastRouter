@@ -168,7 +168,7 @@ func traceCommand(ctx context.Context, ip string, opts TraceOptions) *exec.Cmd {
 	}
 	for _, name := range []string{"nexttrace", "nxtrace", "/usr/local/bin/nexttrace", "/usr/local/bin/nxtrace", "/usr/bin/nexttrace", "/usr/bin/nxtrace"} {
 		if path, err := exec.LookPath(name); err == nil {
-			return exec.CommandContext(ctx, path, "-n", "-m", "18", ip)
+			return exec.CommandContext(ctx, path, "--raw", "-C", "-g", "cn", "--report", "--wide", "--show-ips", "-q", "3", "-n", "-m", "18", ip)
 		}
 	}
 	if _, err := exec.LookPath("mtr"); err == nil && runtime.GOOS != "windows" {
