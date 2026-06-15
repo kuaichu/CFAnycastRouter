@@ -23,10 +23,10 @@ func TestPopPenalty(t *testing.T) {
 	}
 }
 
-func TestEffectiveRegionDoesNotFallBackToCFColo(t *testing.T) {
+func TestEffectiveRegionFallsBackToCFColo(t *testing.T) {
 	region, source := effectiveRegion("", "JP", 0, 0)
-	if region != "unknown" || source != "unknown" {
-		t.Fatalf("effectiveRegion without local route=%s/%s want unknown/unknown", region, source)
+	if region != "JP" || source != "cf" {
+		t.Fatalf("effectiveRegion without local route=%s/%s want JP/cf", region, source)
 	}
 	region, source = effectiveRegion("HK", "JP", 0, 0)
 	if region != "HK" || source != "route" {
@@ -48,5 +48,15 @@ func TestSelectableCandidateSkipsSegmentProbe(t *testing.T) {
 	}
 	if isSelectableCandidate(candidates[0]) {
 		t.Fatal("segment-probe should not be selectable")
+	}
+}
+
+func TestRouteRegionCandidateFallsBackToEffectiveRegion(t *testing.T) {
+	candidates := []Candidate{
+		{IP: "104.20.1.1", Stage: "seed-sample", Region: "JP", Score: 50},
+	}
+
+	if got := firstHealthyInRouteRegionForType(candidates, "JP", "A"); got == nil || got.IP != "104.20.1.1" {
+		t.Fatalf("route-region fallback selected %#v, want JP seed-sample", got)
 	}
 }

@@ -645,7 +645,7 @@ func firstHealthyInRouteRegionForType(candidates []Candidate, region, recordType
 	var best *Candidate
 	bestScore := math.Inf(1)
 	for i := range candidates {
-		if strings.ToUpper(strings.TrimSpace(candidates[i].RouteRegion)) != region {
+		if candidateRecordRegion(candidates[i]) != region {
 			continue
 		}
 		ip := net.ParseIP(candidates[i].IP)
@@ -664,6 +664,16 @@ func firstHealthyInRouteRegionForType(candidates []Candidate, region, recordType
 		}
 	}
 	return best
+}
+
+func candidateRecordRegion(c Candidate) string {
+	if region := normalizeRegion(c.RouteRegion); isKnownRegion(region) {
+		return region
+	}
+	if region := normalizeRegion(c.Region); isKnownRegion(region) {
+		return region
+	}
+	return "unknown"
 }
 
 func isSelectableCandidate(c Candidate) bool {
@@ -748,10 +758,14 @@ func stageBonus(target discover.Target) float64 {
 	}
 }
 
-func effectiveRegion(routeRegion, _ string, _, _ float64) (string, string) {
+func effectiveRegion(routeRegion, cfRegion string, _, _ float64) (string, string) {
 	routeRegion = normalizeRegion(routeRegion)
 	if isKnownRegion(routeRegion) {
 		return routeRegion, "route"
+	}
+	cfRegion = normalizeRegion(cfRegion)
+	if isKnownRegion(cfRegion) {
+		return cfRegion, "cf"
 	}
 	return "unknown", "unknown"
 }
