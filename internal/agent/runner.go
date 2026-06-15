@@ -129,6 +129,7 @@ func (r *Runner) fetchAssignment(ctx context.Context, agentID string) (protocol.
 }
 
 func (r *Runner) postReport(ctx context.Context, report protocol.AgentReport) error {
+	report.Result = router.JSONSafeCycleResult(report.Result)
 	data, err := json.Marshal(report)
 	if err != nil {
 		return err

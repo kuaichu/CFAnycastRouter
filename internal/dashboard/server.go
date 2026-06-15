@@ -541,19 +541,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 }
 
 func safeCycleResult(in *router.CycleResult) *router.CycleResult {
-	if in == nil {
-		return nil
-	}
-	out := *in
-	if in.Best != nil {
-		best := safeCandidate(*in.Best)
-		out.Best = &best
-	}
-	out.Candidates = make([]router.Candidate, len(in.Candidates))
-	for i, c := range in.Candidates {
-		out.Candidates[i] = safeCandidate(c)
-	}
-	return &out
+	return router.JSONSafeCycleResult(in)
 }
 
 func safeRangeValidation(in *router.RangeValidation) *router.RangeValidation {
@@ -572,40 +560,7 @@ func safeRangeValidation(in *router.RangeValidation) *router.RangeValidation {
 }
 
 func safeCandidate(c router.Candidate) router.Candidate {
-	if math.IsInf(c.AvgRTTMs, 0) || math.IsNaN(c.AvgRTTMs) {
-		c.AvgRTTMs = 0
-	}
-	if math.IsInf(c.PingRTTMs, 0) || math.IsNaN(c.PingRTTMs) {
-		c.PingRTTMs = 0
-	}
-	if math.IsInf(c.PingLossRate, 0) || math.IsNaN(c.PingLossRate) {
-		c.PingLossRate = 1
-	}
-	if math.IsInf(c.JitterMs, 0) || math.IsNaN(c.JitterMs) {
-		c.JitterMs = 0
-	}
-	if math.IsInf(c.LossRate, 0) || math.IsNaN(c.LossRate) {
-		c.LossRate = 1
-	}
-	if math.IsInf(c.SpikeRate, 0) || math.IsNaN(c.SpikeRate) {
-		c.SpikeRate = 0
-	}
-	if math.IsInf(c.Score, 0) || math.IsNaN(c.Score) {
-		c.Score = 999999
-	}
-	if math.IsInf(c.PopPenalty, 0) || math.IsNaN(c.PopPenalty) {
-		c.PopPenalty = 0
-	}
-	if math.IsInf(c.DriftPenalty, 0) || math.IsNaN(c.DriftPenalty) {
-		c.DriftPenalty = 0
-	}
-	if math.IsInf(c.HijackPenalty, 0) || math.IsNaN(c.HijackPenalty) {
-		c.HijackPenalty = 0
-	}
-	if math.IsInf(c.LearnedBonus, 0) || math.IsNaN(c.LearnedBonus) {
-		c.LearnedBonus = 0
-	}
-	return c
+	return router.JSONSafeCandidate(c)
 }
 
 var page = template.Must(template.New("page").Parse(`<!doctype html>
