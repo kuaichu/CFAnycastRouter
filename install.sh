@@ -3,12 +3,13 @@ set -euo pipefail
 
 SERVER_URL="http://10.0.0.234:19199"
 AGENT_ID=""
+FORCE_AGENT_ID="false"
 PROBE_SOURCE=""
 CARRIER="auto"
 TOKEN=""
-CONFIG_DIR="/etc/cf-anycast-router"
-STATE_DIR="/var/lib/cf-anycast-router"
-BIN_PATH="/usr/local/bin/cf-router"
+CONFIG_DIR="${CFAR_CONFIG_DIR:-/etc/cf-anycast-router}"
+STATE_DIR="${CFAR_STATE_DIR:-/var/lib/cf-anycast-router}"
+BIN_PATH="${CFAR_BIN_PATH:-/usr/local/bin/cf-router}"
 
 usage() {
   cat <<'EOF'
@@ -17,8 +18,9 @@ Usage:
 
 Options:
   --server URL       Mother server URL, default: http://10.0.0.234:19199
-  --id ID           Agent ID, default: hostname
-  --source TEXT     Probe source label, default: Agent ID
+  --id ID           Explicit Agent ID for migration/reconnect only. Default: auto-generate.
+  --force-id        Allow replacing an existing persisted Agent ID.
+  --source TEXT     Probe source label, default: hostname
   --carrier VALUE   cu, ct, cm, auto, or unknown. default: auto
   --token TOKEN     Optional shared token. Must match CFAR_AGENT_TOKEN on server.
 EOF
@@ -28,6 +30,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --server) SERVER_URL="${2:?missing --server value}"; shift 2 ;;
     --id) AGENT_ID="${2:?missing --id value}"; shift 2 ;;
+    --force-id) FORCE_AGENT_ID="true"; shift ;;
     --source) PROBE_SOURCE="${2:?missing --source value}"; shift 2 ;;
     --carrier) CARRIER="${2:?missing --carrier value}"; shift 2 ;;
     --token) TOKEN="${2:?missing --token value}"; shift 2 ;;
@@ -39,13 +42,6 @@ done
 if [[ "$(id -u)" != "0" ]]; then
   echo "Please run as root or with sudo." >&2
   exit 1
-fi
-
-if [[ -z "$AGENT_ID" ]]; then
-  AGENT_ID="$(hostname -s 2>/dev/null || hostname)"
-fi
-if [[ -z "$PROBE_SOURCE" ]]; then
-  PROBE_SOURCE="$AGENT_ID"
 fi
 
 install_packages() {
@@ -70,6 +66,45 @@ install_packages() {
 install_packages
 
 mkdir -p "$CONFIG_DIR" "$STATE_DIR"
+
+ID_PATH="$STATE_DIR/agent-id"
+PERSISTED_AGENT_ID=""
+if [[ -s "$ID_PATH" ]]; then
+  PERSISTED_AGENT_ID="$(tr -d '[:space:]' < "$ID_PATH")"
+elif [[ -f "$CONFIG_DIR/agent.yaml" ]]; then
+  PERSISTED_AGENT_ID="$(awk '/^[[:space:]]*agent_id[[:space:]]*:/ {sub(/^[^:]*:[[:space:]]*/, ""); print; exit}' "$CONFIG_DIR/agent.yaml" | tr -d "\"'[:space:]")"
+fi
+
+if [[ -n "$AGENT_ID" ]]; then
+  if [[ -n "$PERSISTED_AGENT_ID" && "$AGENT_ID" != "$PERSISTED_AGENT_ID" && "$FORCE_AGENT_ID" != "true" ]]; then
+    echo "Refusing to replace existing Agent ID '$PERSISTED_AGENT_ID' with '$AGENT_ID'." >&2
+    echo "Re-run without --id to keep it, or use --force-id for an intentional migration." >&2
+    exit 1
+  fi
+elif [[ -n "$PERSISTED_AGENT_ID" ]]; then
+  AGENT_ID="$PERSISTED_AGENT_ID"
+else
+  host_part="$(hostname -s 2>/dev/null || hostname)"
+  host_part="$(printf '%s' "$host_part" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//' | cut -c1-24)"
+  [[ -n "$host_part" ]] || host_part="vps"
+  if [[ -r /proc/sys/kernel/random/uuid ]]; then
+    id_suffix="$(cut -d- -f1 /proc/sys/kernel/random/uuid)"
+  else
+    id_suffix="$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+  fi
+  AGENT_ID="cfar-$host_part-$id_suffix"
+fi
+printf '%s\n' "$AGENT_ID" > "$ID_PATH"
+chmod 600 "$ID_PATH"
+
+if [[ -z "$PROBE_SOURCE" ]]; then
+  PROBE_SOURCE="$(hostname -s 2>/dev/null || hostname)"
+fi
+
+if [[ "${CFAR_IDENTITY_ONLY:-}" == "1" ]]; then
+  echo "$AGENT_ID"
+  exit 0
+fi
 
 case "$(uname -m)" in
   x86_64|amd64) ARCH="amd64" ;;

@@ -731,13 +731,13 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <section id="settings-agent" class="settings-pane" style="display:none">
 <div class="form-grid">
 <div class="field"><label>母鸡地址</label><input id="agentServerURL" oninput="updateAgentInstallCommand()"></div>
-<div class="field"><label>Agent ID</label><input id="agentInstallID" placeholder="hk-vps-01" oninput="updateAgentInstallCommand()"></div>
+<div class="field"><label>指定 Agent ID（可选）</label><input id="agentInstallID" placeholder="留空，由目标 VPS 首次安装时自动生成" oninput="updateAgentInstallCommand()"><div class="small">仅迁移或重连已有 Agent 时填写；普通新装请保持为空。</div></div>
 <div class="field"><label>运营商</label><select id="agentInstallCarrier" onchange="updateAgentInstallCommand()"><option value="auto">自动识别</option><option value="cu">联通</option><option value="ct">电信</option><option value="cm">移动</option><option value="unknown">未知</option></select></div>
 <div class="field"><label>共享 Token</label><input id="agentInstallToken" placeholder="可选" oninput="updateAgentInstallCommand()"></div>
 </div>
 <div class="field"><label>一键安装命令</label><textarea id="agentInstallCommand" class="seedbox" readonly spellcheck="false"></textarea></div>
 <div class="actions"><button class="primary" onclick="copyAgentInstallCommand()">复制命令</button><button onclick="resetAgentInstallCommand()">恢复默认</button></div>
-<div id="agentInstallMsg" class="small">在 VPS 上用 root 或 sudo 执行；安装后会创建 systemd 服务并主动上报。</div>
+<div id="agentInstallMsg" class="small">新装会在目标 VPS 自动生成并持久化唯一 ID；重复安装沿用原 ID，不会覆盖其他 Agent。</div>
 </section>
 <section id="settings-agents" class="settings-pane" style="display:none">
 <div class="agent-manage-head"><div><div class="k">预期在线 Agent</div><div id="agentManageSummary" class="agent-summary"><span><strong>0</strong>节点</span><span><strong>0</strong>在线</span></div></div><button class="primary" onclick="addAgentDraft()">＋ 新增 Agent</button></div>
@@ -1104,14 +1104,14 @@ function defaultAgentServerURL(){
 }
 function resetAgentInstallCommand(){
  agentServerURL.value=defaultAgentServerURL();
- agentInstallID.value='vps-01';
+ agentInstallID.value='';
  agentInstallCarrier.value='auto';
  agentInstallToken.value='';
  updateAgentInstallCommand();
 }
 function updateAgentInstallCommand(){
  const server=(agentServerURL.value||defaultAgentServerURL()).trim().replace(/\/+$/,'');
- const id=(agentInstallID.value||'vps-01').trim();
+ const id=agentInstallID.value.trim();
  const carrier=(agentInstallCarrier.value||'auto').trim();
  const token=(agentInstallToken.value||'').trim();
  const fallbackInstall='https://raw.githubusercontent.com/kuaichu/CFAnycastRouter/main/install.sh';
@@ -1119,9 +1119,9 @@ function updateAgentInstallCommand(){
    '(curl -fsSL '+shellQuote(server+'/install.sh')+' || curl -fsSL '+shellQuote(fallbackInstall)+')',
    '| sudo bash -s --',
    '--server '+shellQuote(server),
-   '--id '+shellQuote(id),
    '--carrier '+shellQuote(carrier)
  ];
+ if(id){ parts.push('--id '+shellQuote(id)); }
  if(token){ parts.push('--token '+shellQuote(token)); }
  agentInstallCommand.value=parts.join(' ');
 }
@@ -1279,7 +1279,7 @@ function agentEditorHTML(a,index,isDraft){
   +'<div class="field"><label>显示名</label><input data-field="display_name" value="'+escapeHTML(a.display_name||'')+'" placeholder="例如 杭州联通入口"></div>'
   +'<div class="field"><label>地区 / 探测源</label><input data-field="probe_source" value="'+escapeHTML(a.probe_source||'')+'" placeholder="例如 宁波联通、洛杉矶机房"></div>'
   +'<div class="field"><label>运营商</label><select data-field="carrier">'+carrierOptions(a.carrier||'unknown')+'</select></div>'
-  +'</div><div class="agent-editor-foot"><div class="agent-editor-meta">最后上报：'+seen+' · '+bestText+' · '+agentStatusText(a)+'</div><div class="agent-editor-actions"><button onclick="prepareAgentInstall(this)">带入安装页</button><button class="primary" onclick="saveAgentConfig(this)">保存 Agent</button></div></div></article>';
+  +'</div><div class="agent-editor-foot"><div class="agent-editor-meta">最后上报：'+seen+' · '+bestText+' · '+agentStatusText(a)+'</div><div class="agent-editor-actions"><button onclick="prepareAgentInstall(this)">生成重连命令</button><button class="primary" onclick="saveAgentConfig(this)">保存 Agent</button></div></div></article>';
 }
 function renderAgentManagement(list,force){
  if(agentEditorDirty&&!force){ return; }
@@ -1323,11 +1323,11 @@ async function saveAgentConfig(button){
 }
 function prepareAgentInstall(button){
  const {config}=readAgentEditor(button);
- agentInstallID.value=config.agent_id||'vps-01';
+ agentInstallID.value=config.agent_id||'';
  agentInstallCarrier.value=config.carrier||'unknown';
  updateAgentInstallCommand();
  switchSettingsTab('agent');
- agentInstallMsg.textContent='已带入 '+agentInstallID.value+'；复制命令到对应 VPS 执行。';
+ agentInstallMsg.textContent='已指定 '+agentInstallID.value+'；此命令只用于该 Agent 原机器重装或重连，不要放到新 VPS 执行。';
 }
 function removeAgentEditor(button){
  const card=button.closest('.agent-editor');
