@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -44,6 +45,11 @@ func (r *Runner) Run(ctx context.Context) error {
 	for {
 		if err := r.runOnce(ctx, agentID); err != nil {
 			log.Printf("[agent] cycle failed: %v", err)
+			errorCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			if reportErr := r.postReport(errorCtx, r.newReport(agentID, "error", err.Error(), nil)); reportErr != nil {
+				log.Printf("[agent] error status report failed: %v", reportErr)
+			}
+			cancel()
 		}
 		interval := r.cfg.CheckInterval
 		if interval <= 0 {
@@ -66,21 +72,27 @@ func (r *Runner) runOnce(ctx context.Context, agentID string) error {
 		return err
 	}
 	r.applyAssignment(assignment)
-	if err := r.postReport(ctx, protocol.AgentReport{
-		AgentID:     agentID,
-		Hostname:    hostname(),
-		ProbeSource: r.cfg.ProbeSource,
-		Carrier:     r.cfg.Carrier,
-		Time:        time.Now(),
-	}); err != nil {
+	if err := r.postReport(ctx, r.newReport(agentID, "scanning", "", nil)); err != nil {
 		return fmt.Errorf("register agent: %w", err)
 	}
 	if len(r.cfg.SeedIPs) == 0 && len(r.cfg.SeedCIDRs) == 0 {
 		return fmt.Errorf("server returned no seed targets")
 	}
+	progress := make(chan router.Candidate, 128)
+	progressDone := make(chan struct{})
+	r.router.SetProgress(func(candidate router.Candidate) {
+		select {
+		case progress <- candidate:
+		default:
+		}
+	})
+	go r.reportProgress(ctx, agentID, progress, progressDone)
 	candidates := r.router.Evaluate()
+	r.router.SetProgress(nil)
+	close(progress)
+	<-progressDone
 	if err := r.state.Save(r.cfg.StatePath); err != nil {
-		return err
+		log.Printf("[agent] save local state failed; reporting measurement anyway: %v", err)
 	}
 	result := &router.CycleResult{
 		Time:       time.Now(),
@@ -90,14 +102,63 @@ func (r *Runner) runOnce(ctx context.Context, agentID string) error {
 		Decision:   "agent measurement report",
 		Candidates: candidates,
 	}
-	return r.postReport(ctx, protocol.AgentReport{
+	return r.postReport(ctx, r.newReport(agentID, "idle", "", result))
+}
+
+func (r *Runner) newReport(agentID, status, errorText string, result *router.CycleResult) protocol.AgentReport {
+	return protocol.AgentReport{
 		AgentID:     agentID,
 		Hostname:    hostname(),
 		ProbeSource: r.cfg.ProbeSource,
 		Carrier:     r.cfg.Carrier,
-		Time:        result.Time,
+		Status:      status,
+		Error:       errorText,
+		Time:        time.Now(),
 		Result:      result,
-	})
+	}
+}
+
+func (r *Runner) reportProgress(ctx context.Context, agentID string, input <-chan router.Candidate, done chan<- struct{}) {
+	defer close(done)
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	candidates := map[string]router.Candidate{}
+	dirty := false
+	for {
+		select {
+		case candidate, ok := <-input:
+			if !ok {
+				return
+			}
+			candidates[candidate.IP] = candidate
+			dirty = true
+		case <-ticker.C:
+			if !dirty || len(candidates) == 0 {
+				continue
+			}
+			partial := make([]router.Candidate, 0, len(candidates))
+			for _, candidate := range candidates {
+				partial = append(partial, candidate)
+			}
+			sort.Slice(partial, func(i, j int) bool { return partial[i].IP < partial[j].IP })
+			reportCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+			err := r.postReport(reportCtx, r.newReport(agentID, "scanning", "", &router.CycleResult{
+				Time:       time.Now(),
+				Carrier:    r.cfg.Carrier,
+				CurrentIP:  r.state.CurrentIP,
+				Decision:   fmt.Sprintf("agent scanning: %d candidates completed", len(partial)),
+				Candidates: partial,
+			}))
+			cancel()
+			if err != nil {
+				log.Printf("[agent] progress report failed: %v", err)
+			} else {
+				dirty = false
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (r *Runner) fetchAssignment(ctx context.Context, agentID string) (protocol.AgentAssignment, error) {

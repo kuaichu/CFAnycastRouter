@@ -49,12 +49,20 @@ func (r *agentRegistry) upsert(report protocol.AgentReport) protocol.AgentSnapsh
 	carrier := config.NormalizeCarrier(report.Carrier)
 	displayName := ""
 	managed := false
+	status := strings.TrimSpace(report.Status)
+	lastError := strings.TrimSpace(report.Error)
 	if exists {
 		displayName = existing.DisplayName
 		managed = existing.Managed
 		if managed {
 			probeSource = existing.ProbeSource
 			carrier = existing.Carrier
+		}
+		if status == "" {
+			status = existing.Status
+		}
+		if report.Status == "" && report.Error == "" {
+			lastError = existing.LastError
 		}
 	}
 	snapshot := protocol.AgentSnapshot{
@@ -64,6 +72,8 @@ func (r *agentRegistry) upsert(report protocol.AgentReport) protocol.AgentSnapsh
 		ProbeSource: probeSource,
 		Carrier:     carrier,
 		Managed:     managed,
+		Status:      status,
+		LastError:   lastError,
 		FirstSeen:   firstSeen,
 		LastSeen:    now,
 		Result:      result,

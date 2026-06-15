@@ -50,6 +50,8 @@ type AgentReport struct {
 	Hostname    string              `json:"hostname"`
 	ProbeSource string              `json:"probe_source"`
 	Carrier     string              `json:"carrier"`
+	Status      string              `json:"status,omitempty"`
+	Error       string              `json:"error,omitempty"`
 	Time        time.Time           `json:"time"`
 	Result      *router.CycleResult `json:"result"`
 }
@@ -61,6 +63,8 @@ type AgentSnapshot struct {
 	ProbeSource    string              `json:"probe_source"`
 	Carrier        string              `json:"carrier"`
 	Managed        bool                `json:"managed"`
+	Status         string              `json:"status,omitempty"`
+	LastError      string              `json:"last_error,omitempty"`
 	FirstSeen      time.Time           `json:"first_seen"`
 	LastSeen       time.Time           `json:"last_seen"`
 	CandidateCount int                 `json:"candidate_count"`

@@ -611,6 +611,7 @@ button.ghost{background:transparent}button.danger{background:#3a151a;border-colo
 .agent-editor-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}.agent-editor-title{font-weight:700;font-size:15px}.agent-editor-status{color:var(--muted);font-size:12px;margin-top:3px}
 .agent-editor-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}.agent-editor .field input,.agent-editor .field select{border-radius:7px;padding:10px 12px}.agent-editor .field input[readonly]{color:#9dabbc;background:#0c141d}
 .agent-editor-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}.agent-editor-meta{color:var(--muted);font-size:12px;min-width:0}.agent-editor-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.agent-empty{border:1px dashed #315064;border-radius:8px;padding:24px;text-align:center;color:var(--muted)}
+.agent-error{color:var(--bad)}.agent-scanning{color:var(--warn)}
 .section-title{margin:20px 0 8px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
 .final-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
 .final-table{margin-top:10px;table-layout:fixed}.final-table th,.final-table td{padding:8px 10px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
@@ -1155,6 +1156,12 @@ function agentOnline(a){
  return seen>0&&Date.now()-seen<=threshold;
 }
 function carrierLabel(value){ return ({cu:'中国联通',ct:'中国电信',cm:'中国移动',unknown:'未知'})[value]||value||'未知'; }
+function agentStatusText(a){
+ if(a.last_error){ return '<span class="agent-error">错误：'+escapeHTML(a.last_error)+'</span>'; }
+ if(a.status==='scanning'){ return '<span class="agent-scanning">扫描中，已完成 '+(a.candidate_count||0)+' 个候选</span>'; }
+ if(a.status==='idle'){ return '本轮完成，共 '+(a.candidate_count||0)+' 个候选'; }
+ return '候选 '+(a.candidate_count||0);
+}
 function carrierOptions(value){
  return ['cu','ct','cm','unknown'].map(v=>'<option value="'+v+'"'+(v===value?' selected':'')+'>'+carrierLabel(v)+'</option>').join('');
 }
@@ -1174,7 +1181,7 @@ function agentEditorHTML(a,index,isDraft){
   +'<div class="field"><label>显示名</label><input data-field="display_name" value="'+escapeHTML(a.display_name||'')+'" placeholder="例如 杭州联通入口"></div>'
   +'<div class="field"><label>地区 / 探测源</label><input data-field="probe_source" value="'+escapeHTML(a.probe_source||'')+'" placeholder="例如 宁波联通、洛杉矶机房"></div>'
   +'<div class="field"><label>运营商</label><select data-field="carrier">'+carrierOptions(a.carrier||'unknown')+'</select></div>'
-  +'</div><div class="agent-editor-foot"><div class="agent-editor-meta">最后上报：'+seen+' · '+bestText+' · 候选 '+(a.candidate_count||0)+'</div><div class="agent-editor-actions"><button onclick="prepareAgentInstall(this)">带入安装页</button><button class="primary" onclick="saveAgentConfig(this)">保存 Agent</button></div></div></article>';
+  +'</div><div class="agent-editor-foot"><div class="agent-editor-meta">最后上报：'+seen+' · '+bestText+' · '+agentStatusText(a)+'</div><div class="agent-editor-actions"><button onclick="prepareAgentInstall(this)">带入安装页</button><button class="primary" onclick="saveAgentConfig(this)">保存 Agent</button></div></div></article>';
 }
 function renderAgentManagement(list,force){
  if(agentEditorDirty&&!force){ return; }
@@ -1257,7 +1264,7 @@ function renderAgents(payload){
    const seenDate=agentSeenDate(a.last_seen);
    const seen=seenDate?seenDate.toLocaleString():'-';
    const id=[a.display_name||a.agent_id,a.hostname&&a.hostname!==a.agent_id?a.hostname:''].filter(Boolean).map(escapeHTML).join(' / ');
-   return '<tr><td>'+id+'</td><td>'+escapeHTML(a.probe_source||'-')+'</td><td>'+escapeHTML(a.carrier||'-')+'</td><td>'+seen+'</td><td>'+(a.candidate_count||0)+'</td><td>'+escapeHTML(best.ip||'-')+'</td><td>'+escapeHTML(best.region||best.route_region||'-')+'</td><td>'+(Number.isFinite(best.score)?best.score.toFixed(1):'-')+'</td></tr>';
+   return '<tr><td>'+id+'</td><td>'+escapeHTML(a.probe_source||'-')+'</td><td>'+escapeHTML(a.carrier||'-')+'</td><td>'+seen+'</td><td>'+agentStatusText(a)+'</td><td>'+escapeHTML(best.ip||'-')+'</td><td>'+escapeHTML(best.region||best.route_region||'-')+'</td><td>'+(Number.isFinite(best.score)?best.score.toFixed(1):'-')+'</td></tr>';
  }).join('');
 }
 async function refresh(){

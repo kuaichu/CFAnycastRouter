@@ -196,6 +196,17 @@ func TestAgentHeartbeatPreservesLastMeasurement(t *testing.T) {
 	}
 }
 
+func TestAgentRegistryRecordsScanStatusAndErrors(t *testing.T) {
+	registry := newAgentRegistry()
+	registry.upsert(protocol.AgentReport{AgentID: "cu-01", Carrier: "cu", Status: "scanning"})
+	registry.upsert(protocol.AgentReport{AgentID: "cu-01", Carrier: "cu", Status: "error", Error: "save state failed"})
+
+	got := registry.list()
+	if len(got) != 1 || got[0].Status != "error" || got[0].LastError != "save state failed" {
+		t.Fatalf("agent status was not retained: %#v", got)
+	}
+}
+
 func TestManagedAgentConfigurationOverridesReportedMetadata(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "agents.json")
 	registry := newAgentRegistry(path)
