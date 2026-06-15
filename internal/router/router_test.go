@@ -24,13 +24,21 @@ func TestPopPenalty(t *testing.T) {
 }
 
 func TestEffectiveRegionFallsBackToCFColo(t *testing.T) {
-	region, source := effectiveRegion("", "JP", 0, 0)
+	region, source := effectiveRegion("", "JP", "")
 	if region != "JP" || source != "cf" {
 		t.Fatalf("effectiveRegion without local route=%s/%s want JP/cf", region, source)
 	}
-	region, source = effectiveRegion("HK", "JP", 0, 0)
+	region, source = effectiveRegion("HK", "JP", "")
 	if region != "HK" || source != "route" {
 		t.Fatalf("effectiveRegion with local route=%s/%s want HK/route", region, source)
+	}
+	region, source = effectiveRegion("HK", "JP", "route trace timed out")
+	if region != "JP" || source != "cf" {
+		t.Fatalf("effectiveRegion with failed conflicting route=%s/%s want JP/cf", region, source)
+	}
+	region, source = effectiveRegion("JP", "JP", "route trace timed out")
+	if region != "JP" || source != "route" {
+		t.Fatalf("effectiveRegion with failed matching route=%s/%s want JP/route", region, source)
 	}
 }
 
@@ -54,6 +62,15 @@ func TestSelectableCandidateSkipsSegmentProbe(t *testing.T) {
 func TestRouteRegionCandidateFallsBackToEffectiveRegion(t *testing.T) {
 	candidates := []Candidate{
 		{IP: "104.20.1.1", Stage: "seed-sample", Region: "unknown", CFRegion: "JP", Score: 50},
+		{
+			IP:          "108.162.198.4",
+			Stage:       "hot",
+			Region:      "HK",
+			RouteRegion: "HK",
+			CFRegion:    "JP",
+			RouteError:  "route trace timed out",
+			Score:       40,
+		},
 	}
 
 	if got := firstHealthyInRouteRegionForType(candidates, "JP", "A"); got == nil || got.IP != "104.20.1.1" {
@@ -61,5 +78,8 @@ func TestRouteRegionCandidateFallsBackToEffectiveRegion(t *testing.T) {
 	}
 	if !isSelectableCandidate(candidates[0]) {
 		t.Fatal("candidate with CF region fallback should be selectable")
+	}
+	if got := candidateRecordRegion(candidates[1]); got != "JP" {
+		t.Fatalf("failed conflicting route record region=%s want JP", got)
 	}
 }

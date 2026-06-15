@@ -423,7 +423,7 @@ func (r *Router) probeOne(c Candidate, now time.Time, routeUsed *int64, routeBud
 	c.RouteISP = route.ISP
 	c.RouteConfidence = route.Confidence
 	c.RouteError = route.Error
-	c.Region, c.RegionSource = effectiveRegion(c.RouteRegion, c.CFRegion, c.PingRTTMs, c.AvgRTTMs)
+	c.Region, c.RegionSource = effectiveRegion(c.RouteRegion, c.CFRegion, c.RouteError)
 	if c.Region == "" {
 		c.Region = "unknown"
 	}
@@ -667,14 +667,22 @@ func firstHealthyInRouteRegionForType(candidates []Candidate, region, recordType
 }
 
 func candidateRecordRegion(c Candidate) string {
-	if region := normalizeRegion(c.RouteRegion); isKnownRegion(region) {
-		return region
+	routeRegion := normalizeRegion(c.RouteRegion)
+	cfRegion := normalizeRegion(c.CFRegion)
+	if strings.TrimSpace(c.RouteError) != "" &&
+		isKnownRegion(routeRegion) &&
+		isKnownRegion(cfRegion) &&
+		routeRegion != cfRegion {
+		return cfRegion
 	}
 	if region := normalizeRegion(c.Region); isKnownRegion(region) {
 		return region
 	}
-	if region := normalizeRegion(c.CFRegion); isKnownRegion(region) {
-		return region
+	if isKnownRegion(routeRegion) {
+		return routeRegion
+	}
+	if isKnownRegion(cfRegion) {
+		return cfRegion
 	}
 	return "unknown"
 }
@@ -761,12 +769,18 @@ func stageBonus(target discover.Target) float64 {
 	}
 }
 
-func effectiveRegion(routeRegion, cfRegion string, _, _ float64) (string, string) {
+func effectiveRegion(routeRegion, cfRegion, routeError string) (string, string) {
 	routeRegion = normalizeRegion(routeRegion)
+	cfRegion = normalizeRegion(cfRegion)
+	if strings.TrimSpace(routeError) != "" &&
+		isKnownRegion(routeRegion) &&
+		isKnownRegion(cfRegion) &&
+		routeRegion != cfRegion {
+		return cfRegion, "cf"
+	}
 	if isKnownRegion(routeRegion) {
 		return routeRegion, "route"
 	}
-	cfRegion = normalizeRegion(cfRegion)
 	if isKnownRegion(cfRegion) {
 		return cfRegion, "cf"
 	}

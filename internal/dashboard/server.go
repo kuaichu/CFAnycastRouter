@@ -872,6 +872,7 @@ function decisionLabel(v){
 function regionSourceLabel(v){
  const map={
    'route':'ICMP 路由',
+   'cf':'CF Colo',
    'cf-colo':'CF Colo',
    'cf-speed':'CF 官方测速',
    'cf-colo-tls':'443 服务面',
@@ -930,7 +931,12 @@ function knownRegion(v){
  v=String(v||'').toUpperCase();
  return v&&v!=='UNKNOWN'&&v!=='-'&&v!=='PREFLIGHT'?v:'';
 }
-function candidateRegion(c){ return knownRegion(c?.route_region)||knownRegion(c?.region)||knownRegion(c?.cf_region)||'unknown'; }
+function candidateRegion(c){
+ const route=knownRegion(c?.route_region);
+ const cf=knownRegion(c?.cf_region);
+ if(String(c?.route_error||'').trim()&&route&&cf&&route!==cf){ return cf; }
+ return knownRegion(c?.region)||route||cf||'unknown';
+}
 function matchesRegion(c){
  const region=candidateRegion(c);
  if(region==='unknown'){ return false; }
@@ -1072,9 +1078,17 @@ function candidateRow(c,last){
  const routeRegion=(c.route_region||'-');
  const hint=[c.route_hint_ip,c.route_city,c.route_isp].filter(Boolean).join(' ');
  const source=regionSourceLabel(c.region_source);
+ const routeFailedConflict=Boolean(
+   String(c.route_error||'').trim()&&
+   knownRegion(c.route_region)&&
+   knownRegion(c.cf_region)&&
+   knownRegion(c.route_region)!==knownRegion(c.cf_region)
+ );
  const speedText=c.cf_speed_rtt_ms>0?(fmt(c.cf_speed_rtt_ms)+'ms'):(c.cf_speed_error?'失败':'-');
  const speedMbps=c.cf_speed_mbps>0?fmt(c.cf_speed_mbps):'-';
- const reason=(c.region_source==='cf-colo-tls')
+ const reason=routeFailedConflict
+   ? ('CF Colo 回退：'+colo+'；'+decisionLabel(c.route_error))
+   : (c.region_source==='cf-colo-tls')
    ? (source+'：'+colo+'，TLS '+fmt(c.avg_rtt_ms||0)+'ms；ICMP '+routeRegion+(hint?'，'+hint:''))
    : ((source&&source!=='-'?source+'：':'')+(hint||decisionLabel(c.route_error||c.error)||'-'));
  const pingText=skipped?'-':(c.ping_rtt_ms>0?fmt(c.ping_rtt_ms):(c.ping_error?'失败':'-'));
