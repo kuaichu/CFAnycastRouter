@@ -23,6 +23,7 @@ Options:
   --source TEXT     Probe source label, default: hostname
   --carrier VALUE   cu, ct, cm, auto, or unknown. default: auto
   --token TOKEN     Optional shared token. Must match CFAR_AGENT_TOKEN on server.
+  --skip-nexttrace  Do not install NextTrace for route geolocation.
 EOF
 }
 
@@ -34,6 +35,7 @@ while [[ $# -gt 0 ]]; do
     --source) PROBE_SOURCE="${2:?missing --source value}"; shift 2 ;;
     --carrier) CARRIER="${2:?missing --carrier value}"; shift 2 ;;
     --token) TOKEN="${2:?missing --token value}"; shift 2 ;;
+    --skip-nexttrace) CFAR_SKIP_NEXTTRACE="1"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
   esac
@@ -125,6 +127,28 @@ download_file() {
   fi
 }
 
+install_nexttrace() {
+  if [[ "${CFAR_SKIP_NEXTTRACE:-}" == "1" ]]; then
+    echo "Skipping NextTrace install."
+    return
+  fi
+  if command -v nexttrace >/dev/null 2>&1 || command -v nxtrace >/dev/null 2>&1 || [[ -x /usr/local/bin/nexttrace ]] || [[ -x /usr/local/bin/nxtrace ]]; then
+    echo "NextTrace already installed."
+    return
+  fi
+  echo "Installing NextTrace for route geolocation..."
+  if command -v curl >/dev/null 2>&1; then
+    if curl -fsSL --connect-timeout 8 --max-time 30 https://nxtrace.org/nt | bash -s -- --flavor full; then
+      return
+    fi
+  else
+    if wget -T 30 -qO- https://nxtrace.org/nt | bash -s -- --flavor full; then
+      return
+    fi
+  fi
+  echo "NextTrace install failed; agent will fall back to mtr/traceroute/tracepath." >&2
+}
+
 BINARY_NAME="cf-router-linux-$ARCH"
 PRIMARY_URL="${SERVER_URL%/}/download/$BINARY_NAME"
 FALLBACK_URL="https://raw.githubusercontent.com/kuaichu/CFAnycastRouter/main/dist/$BINARY_NAME"
@@ -139,6 +163,8 @@ fi
 
 install -m 0755 "$tmp_binary" "$BIN_PATH"
 rm -f "$tmp_binary"
+
+install_nexttrace
 
 cat > "$CONFIG_DIR/agent.yaml" <<EOF
 probe_source: "$PROBE_SOURCE"
@@ -170,6 +196,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=-$CONFIG_DIR/agent.env
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ExecStart=$BIN_PATH agent $CONFIG_DIR/agent.yaml
 Restart=always
 RestartSec=10

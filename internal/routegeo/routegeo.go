@@ -166,7 +166,7 @@ func traceCommand(ctx context.Context, ip string, opts TraceOptions) *exec.Cmd {
 		}
 		return exec.CommandContext(ctx, opts.Command, args...)
 	}
-	for _, name := range []string{"nexttrace", "nxtrace"} {
+	for _, name := range []string{"nexttrace", "nxtrace", "/usr/local/bin/nexttrace", "/usr/local/bin/nxtrace", "/usr/bin/nexttrace", "/usr/bin/nxtrace"} {
 		if path, err := exec.LookPath(name); err == nil {
 			return exec.CommandContext(ctx, path, "-n", "-m", "18", ip)
 		}
