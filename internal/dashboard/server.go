@@ -1479,10 +1479,18 @@ async function removeAgentRecord(agentID){
  renderAgents({agents:agentsCache});
  settingsMsg.textContent=res.removed?'已删除 '+agentID:'未找到 '+agentID;
 }
+function hasActiveDataSelection(){
+ const selection=window.getSelection?.();
+ if(!selection||selection.isCollapsed||!selection.toString().trim()){ return false; }
+ const range=selection.rangeCount?selection.getRangeAt(0):null;
+ const roots=[carrierFinalRows,agentRows,rows];
+ return roots.some(root=>root&&range&&range.intersectsNode(root));
+}
 function renderAgents(payload){
  const list=(payload&&payload.agents)||[];
  agentsCache=list;
  renderAgentManagement(list);
+ if(hasActiveDataSelection()){ return; }
  renderCarrierFinal(list);
  renderCarrierData(list);
  if(!list.length){
