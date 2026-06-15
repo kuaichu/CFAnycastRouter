@@ -637,36 +637,60 @@ button.ghost{background:transparent}button.danger{background:#3a151a;border-colo
 table{width:100%;border-collapse:collapse;margin-top:16px;background:var(--panel);border:1px solid var(--line)}
 th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;font-variant-numeric:tabular-nums}
 th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--text)}th.sortable.active{color:var(--ok)}tr.best td{color:var(--ok)}tr.bad td{color:var(--bad)}tr.hot td{color:var(--ok)}
-@media(max-width:800px){.grid,.settings,.form-grid,.form-grid.compact,.agent-editor-grid,.settings-layout{grid-template-columns:1fr}.tabs{position:static;display:flex;overflow:auto}.record-row{grid-template-columns:1fr 1fr}.record-row input:nth-child(3){grid-column:1/-1}main{padding:18px}.agent-manage-head,.agent-editor-foot,.final-head{align-items:stretch;flex-direction:column}.agent-editor-actions,.final-carriers{justify-content:flex-start}th:nth-child(4),td:nth-child(4),th:nth-child(8),td:nth-child(8){display:none}}
+/* Operational dashboard */
+:root{--bg:#081018;--panel:#0e1923;--panel-2:#101d28;--panel-soft:#0a151e;--line:#243544;--line-strong:#315064;--ok:#35d39a;--ok-soft:#0f3c31;--warn:#f0b84b;--bad:#ff6868;--text:#e9f0f5;--muted:#8fa0ae}
+body{background:radial-gradient(circle at 45% -20%,#122938 0,#081018 36%,#070d13 100%);min-height:100vh}
+main{max-width:1440px;padding:0 22px 28px}
+.app-header{height:68px;display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid rgba(49,80,100,.7);margin-bottom:14px}
+.brand{display:flex;align-items:center;gap:12px;min-width:0}.brand-mark{position:relative;width:32px;height:32px;flex:0 0 32px}.brand-mark i{position:absolute;width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 12px rgba(53,211,154,.35)}.brand-mark i:nth-child(1){left:2px;top:12px}.brand-mark i:nth-child(2){left:13px;top:2px}.brand-mark i:nth-child(3){right:1px;top:14px}.brand-mark i:nth-child(4){left:12px;bottom:1px}.brand-mark:before,.brand-mark:after{content:"";position:absolute;height:1px;background:#279d78;transform-origin:left center}.brand-mark:before{width:24px;left:6px;top:14px;transform:rotate(-29deg)}.brand-mark:after{width:23px;left:7px;top:16px;transform:rotate(32deg)}
+.brand-title{font-size:18px;font-weight:750;letter-spacing:0}.brand-sub{font-size:11px;color:var(--muted);margin-top:1px}.header-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.live-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:6px;padding:7px 10px;color:#cbd7df;background:#0b151e;font-size:12px}.live-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px rgba(53,211,154,.1)}.live-dot.paused{background:var(--warn);box-shadow:none}.last-update{color:var(--muted);font-size:12px;margin:0 4px}
+button{border-radius:5px;background:#111d27;border-color:#304150;padding:7px 12px}button.primary{background:linear-gradient(90deg,#14946c,#29c995);border-color:#36d39a;color:#f5fffb;font-weight:650}button.danger{background:#251317;border-color:#7e303a;color:#ff8a92}.icon-text{display:inline-flex;align-items:center;gap:6px}
+.panel{background:linear-gradient(145deg,rgba(15,28,38,.97),rgba(12,23,32,.97));border-color:var(--line);box-shadow:0 8px 28px rgba(0,0,0,.08)}
+.overview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));padding:0;margin-bottom:14px}.overview-item{padding:19px 22px;min-width:0;position:relative}.overview-item+.overview-item:before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:1px;background:var(--line)}.overview-value{font:17px/1.3 ui-monospace,SFMono-Regular,Consolas,monospace;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.overview-value.decision-value{font-family:inherit;font-size:18px}.overview-sub{font-size:12px;color:var(--muted);margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.workbench{display:grid;grid-template-columns:minmax(280px,37%) 1fr;gap:14px;margin-bottom:14px}.section-heading{font-size:18px;font-weight:720;margin:0}.section-copy{font-size:12px;color:var(--muted);margin-top:3px}.seed-panel,.scan-panel{padding:18px}.seedbox{min-height:128px;background:#08131c;border-color:#2b3d4b}.scan-status-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.scan-stage{color:var(--ok);font-size:22px;font-weight:720;margin-top:12px}.scan-stage-badge{display:inline-block;margin-left:8px;padding:3px 8px;border-radius:999px;border:1px solid #31536d;background:#112a3c;color:#70bbed;font-size:11px;vertical-align:middle}.scan-count{font-size:16px;margin-top:7px}.scan-count strong{font:700 20px ui-monospace,SFMono-Regular,Consolas,monospace}.scan-meta{font-size:12px;color:#b3c0ca;margin-top:12px}.scan-steps{display:flex;align-items:center;margin-top:25px}.scan-step{display:flex;align-items:center;gap:9px;white-space:nowrap;color:var(--muted);font-size:12px}.scan-step.active{color:#dffcf1}.step-num{width:25px;height:25px;border:1px solid #50606e;border-radius:50%;display:grid;place-items:center}.scan-step.active .step-num{border-color:var(--ok);color:var(--ok);background:rgba(53,211,154,.08)}.step-line{height:1px;background:#526170;flex:1;min-width:36px;margin:0 12px}.scan-note{font-size:12px;color:var(--muted);margin-top:24px}
+.dashboard-section{margin-bottom:14px;padding:18px}.section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.section-title-wrap{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}.section-title-wrap .section-copy{margin:0}.final-carriers{justify-content:flex-end}.segments{gap:0}.seg{border-radius:0;padding:7px 14px}.seg:first-child{border-radius:5px 0 0 5px}.seg:last-child{border-radius:0 5px 5px 0}.seg+.seg{margin-left:-1px}.seg.active{background:linear-gradient(90deg,#14946c,#2acb97);color:white;border-color:#2acb97}
+.notice{display:none;align-items:center;gap:9px;color:var(--warn);font-size:12px;margin:14px 0 2px}.notice.show{display:flex}.notice button{border:0;background:transparent;color:var(--ok);padding:0}.notice.info{color:#9fb0bd}.notice-icon{width:16px;height:16px;border:1px solid currentColor;border-radius:50%;display:grid;place-items:center;font-size:10px;flex:0 0 auto}
+.final-results-wrap,.data-table-wrap{overflow:auto}.final-table,.data-table{background:transparent;border:0;margin-top:12px;table-layout:auto}.final-table th,.final-table td,.data-table th,.data-table td{border-bottom:1px solid rgba(49,65,79,.8);padding:12px 10px}.final-table tr.recommended,.data-table tr.best{background:linear-gradient(90deg,rgba(20,148,108,.12),rgba(20,148,108,.02));box-shadow:inset 2px 0 var(--ok)}.result-badge{display:inline-block;border:1px solid #176d52;background:#0c3027;color:var(--ok);border-radius:4px;padding:2px 6px;font-size:10px;margin-left:7px}.status-good{color:var(--ok)}.status-muted{color:var(--muted)}
+.agent-section-head{display:flex;align-items:center;justify-content:space-between;gap:14px}.agent-summary-line{color:var(--muted);font-size:12px}.agent-table td:first-child{font-weight:650}.agent-name-sub{display:block;font-size:10px;color:var(--muted);font-weight:400;margin-top:2px}.status-pill{display:inline-flex;align-items:center;gap:6px;border:1px solid #1f6c53;border-radius:4px;background:#0c3027;color:#c9fbed;padding:3px 8px;font-size:11px}.status-pill.offline{border-color:#683238;background:#271417;color:#ff989e}.status-pill .status-dot{margin:0;width:6px;height:6px}
+.data-section{padding:18px}.data-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}.data-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.search-box{position:relative}.search-box:before{content:"⌕";position:absolute;left:11px;top:5px;color:var(--muted);font-size:20px}.search-box input{width:250px;background:#0a151e;border:1px solid #304150;border-radius:5px;color:var(--text);padding:8px 10px 8px 34px;box-sizing:border-box}.toolbar-select{background:#0a151e;border:1px solid #304150;border-radius:5px;color:var(--text);padding:8px 10px}.column-picker{position:relative}.column-menu{display:none;position:absolute;right:0;top:calc(100% + 8px);z-index:6;width:290px;background:#13212c;border:1px solid #3a5060;border-radius:7px;padding:15px;box-shadow:0 18px 50px rgba(0,0,0,.45)}.column-menu.open{display:block}.column-menu-title{font-weight:700;margin-bottom:12px}.column-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px 14px}.column-grid label{display:flex;align-items:center;gap:7px;color:#cbd6dd;font-size:12px}.column-grid input{accent-color:var(--ok)}.column-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.selection-notice{margin:12px 0 0;padding:9px 11px;border:1px solid #2d3d4a;background:#0a151e;border-radius:5px}
+.data-table{min-width:1080px}.data-table th{white-space:nowrap}.data-table td{font-size:12px;vertical-align:middle}.data-table td[data-col="ip"]{font:12px ui-monospace,SFMono-Regular,Consolas,monospace}.data-table td[data-col="hint"]{max-width:250px;white-space:normal}.data-table td[data-col="speed"]{color:#d9e4ea}.data-table td[data-col="agent"]{white-space:normal}.data-table [hidden]{display:none!important}
+.table-footer{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:14px;color:var(--muted);font-size:12px}.pagination{display:flex;align-items:center;gap:6px}.page-btn{min-width:30px;padding:6px 8px}.page-btn.active{background:#15946d;border-color:#26c796;color:white}.page-ellipsis{padding:0 3px}.refresh-live{display:inline-flex;align-items:center;gap:7px;color:#aebac3}.refresh-live .live-dot{width:6px;height:6px}.refresh-live.paused{color:var(--warn)}
+.modal-card{background:#101d27;border-color:#315064}.settings-card{background:#0d1821}
+@media(max-width:900px){main{padding:0 14px 22px}.app-header{height:auto;padding:14px 0;align-items:flex-start}.header-actions{max-width:58%}.overview{grid-template-columns:1fr 1fr}.overview-item:nth-child(3):before{display:none}.overview-item:nth-child(n+3){border-top:1px solid var(--line)}.workbench{grid-template-columns:1fr}.section-head,.agent-section-head{align-items:stretch;flex-direction:column}.final-carriers{justify-content:flex-start}.search-box input{width:210px}.settings-layout,.form-grid,.form-grid.compact,.agent-editor-grid{grid-template-columns:1fr}.tabs{position:static;display:flex;overflow:auto}}
+@media(max-width:620px){.brand-sub,.last-update{display:none}.header-actions{max-width:none}.app-header{flex-direction:column}.overview{grid-template-columns:1fr}.overview-item+.overview-item:before{top:0;right:18px;bottom:auto;width:auto;height:1px}.overview-item:nth-child(n+3){border-top:0}.scan-steps{align-items:flex-start}.step-line{min-width:18px;margin:13px 7px 0}.data-controls{justify-content:flex-start;width:100%}.search-box,.search-box input{width:100%}.table-footer{align-items:flex-start;flex-direction:column}.modal{padding:10px}.modal-card{width:calc(100vw - 20px);max-height:calc(100vh - 20px);padding:16px}.record-row{grid-template-columns:1fr 1fr}.agent-manage-head,.agent-editor-foot{align-items:stretch;flex-direction:column}.agent-editor-actions{justify-content:flex-start}}
 </style>
 </head>
 <body><main>
-<div class="top"><h1>CF Anycast Router</h1><div class="top-actions"><button class="ghost" onclick="openSettings()">管理设置</button><button id="stopBtn" class="danger" onclick="setAutoScan('stop')">停止自动探测</button><button id="startBtn" class="primary" onclick="setAutoScan('start')" disabled>恢复自动探测</button><span id="mode" class="hint">正在加载状态</span></div></div>
-<section class="grid">
-<div class="panel"><div class="k">当前入口</div><div id="current" class="v">-</div></div>
-<div class="panel"><div class="k">最优候选</div><div id="best" class="v">-</div></div>
-<div class="panel"><div class="k">本地路由地区</div><div id="pop" class="v">-</div></div>
-<div class="panel"><div class="k">切换决策</div><div id="decision" class="v">-</div></div>
+<header class="app-header">
+<div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span><div><div class="brand-title">CF Anycast Router</div><div class="brand-sub">Anycast 路由学习与调度</div></div></div>
+<div class="header-actions"><span id="liveStatus" class="live-chip"><span class="live-dot"></span><span id="mode">正在加载</span></span><span id="lastUpdated" class="last-update">最近更新：-</span><button class="ghost" onclick="refreshNow()">立即刷新</button><button class="ghost icon-text" onclick="openSettings()">⚙ 设置</button><button id="stopBtn" class="danger" onclick="setAutoScan('stop')">暂停探测</button><button id="startBtn" class="primary" onclick="setAutoScan('start')" disabled>恢复探测</button></div>
+</header>
+<section class="panel overview">
+<div class="overview-item"><div class="k">当前入口</div><div id="current" class="overview-value">-</div><div id="currentSub" class="overview-sub">等待状态数据</div></div>
+<div class="overview-item"><div class="k">最优候选</div><div id="best" class="overview-value">-</div><div id="bestSub" class="overview-sub">等待 Agent 上报</div></div>
+<div class="overview-item"><div class="k">路由地区</div><div id="pop" class="overview-value">-</div><div id="popSub" class="overview-sub">等待 Cloudflare Colo</div></div>
+<div class="overview-item"><div class="k">当前决策</div><div id="decisionTitle" class="overview-value decision-value">等待判断</div><div id="decision" class="overview-sub">-</div></div>
 </section>
-<section class="settings">
-<div class="panel">
-<div class="k">种子池输入</div>
+<section class="workbench">
+<div class="panel seed-panel">
+<h2 class="section-heading">种子与扫描</h2><div class="section-copy">维护候选网段并启动本轮抽样</div>
 <textarea id="seedInput" class="seedbox" spellcheck="false" placeholder="104.20.23.137&#10;104.20.0.0/16&#10;104.26.x.x&#10;172.67.73.x"></textarea>
 <div class="actions">
 <button class="primary" onclick="saveSeeds()">保存种子</button>
-<button onclick="scanNow()">随机抽样扫描</button>
+<button onclick="scanNow()">立即扫描</button>
 </div>
 <div id="seedMsg" class="small">粘贴 IP、CIDR 或通配段，每行一个。</div>
 <div class="lookup-row">
 <input id="lookupIP" placeholder="输入 IP，例如 104.20.23.137">
-<button onclick="lookupIPRange()">查询并验证段</button>
+<button onclick="lookupIPRange()">验证 IP / 网段</button>
 </div>
 <div id="lookupMsg" class="small">查询会先找 BGP 前缀，再抽样验证；只有本地路由地区一致的段才会保留。</div>
 </div>
-<div class="panel">
-<div class="k">扫描模型</div>
-<div class="v">种子 -> 学习段 -> 热点</div>
-<div class="small">CIDR 会先按 /24 抽样，再按步进 IP 抽样。地区只根据本机 traceroute/mtr 的路由跳点判断；Cloudflare Colo 仅作为参考显示。</div>
+<div class="panel scan-panel">
+<div class="scan-status-head"><div><h2 class="section-heading">当前扫描</h2><div id="scanStage" class="scan-stage">等待 Agent <span class="scan-stage-badge">待机</span></div><div id="scanCount" class="scan-count">已完成 <strong>0</strong> 个候选</div></div><div id="scanRound" class="section-copy">等待本轮状态</div></div>
+<div id="scanMeta" class="scan-meta">可用候选 0 · 已追踪路由 0 · 剩余预算 -</div>
+<div class="scan-steps"><div id="scanStep1" class="scan-step active"><span class="step-num">1</span><span>种子段预检</span></div><span class="step-line"></span><div id="scanStep2" class="scan-step"><span class="step-num">2</span><span>候选测量</span></div><span class="step-line"></span><div id="scanStep3" class="scan-step"><span class="step-num">3</span><span>结果汇总</span></div></div>
+<div class="scan-note">阶段与数量来自 Agent 实际任务；地区以有效路由结果和 Cloudflare Colo 裁决。</div>
 </div>
 </section>
 <div id="settingsModal" class="modal" onclick="if(event.target===this)closeSettings()">
@@ -778,42 +802,45 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <div class="modal-actions"><button onclick="closeSettings()">关闭</button><button id="saveSettingsBtn" class="primary" onclick="saveSettings()">保存设置</button></div>
 </div>
 </div>
-<div class="section-title">最终区</div>
-<section class="panel">
-<div class="final-head"><div><div class="k">运营商优选与官方测速</div><div class="small">聚合同一运营商的在线 Agent；DNS 路由优选与 speed.cloudflare.com 测速结果在同一行对照。</div></div><div id="finalCarrierTabs" class="segments final-carriers"></div></div>
-<div class="final-results-wrap"><table class="final-table"><thead><tr><th>地区</th><th>DNS 优选 IP</th><th>解析域名</th><th>Ping</th><th>官方测速 IP</th><th>耗时</th><th>Mbps</th><th>Agent</th></tr></thead><tbody id="carrierFinalRows"><tr><td colspan="8">等待 Agent 扫描数据</td></tr></tbody></table></div>
+<section class="panel dashboard-section">
+<div class="section-head"><div class="section-title-wrap"><h2 class="section-heading">优选结果</h2><div class="section-copy">按运营商聚合在线 Agent，展示各地区当前推荐入口</div></div><div id="finalCarrierTabs" class="segments final-carriers"></div></div>
+<div id="finalNotice" class="notice"><span class="notice-icon">!</span><span id="finalNoticeText"></span><button onclick="refreshNow()">重试</button></div>
+<div class="final-results-wrap"><table class="final-table"><thead><tr><th>地区</th><th>推荐 IP</th><th>解析域名</th><th>Ping</th><th>测速 IP</th><th>Mbps</th><th>Agent</th><th>状态</th></tr></thead><tbody id="carrierFinalRows"><tr><td colspan="8">等待 Agent 扫描数据</td></tr></tbody></table></div>
 </section>
-<div class="section-title">探针上报</div>
-<section class="panel">
-<div class="k">Agent 列表</div>
-<table class="final-table"><thead><tr><th>Agent</th><th>探测源</th><th>运营商</th><th>最后上报</th><th>候选</th><th>最优 IP</th><th>地区</th><th>得分</th></tr></thead><tbody id="agentRows"><tr><td colspan="8">等待 agent 上报</td></tr></tbody></table>
+<section class="panel dashboard-section">
+<div class="agent-section-head"><div class="section-title-wrap"><h2 class="section-heading">探针上报</h2><div class="section-copy">Agent 状态与最近一次测量摘要</div></div><div id="agentSummaryLine" class="agent-summary-line">等待 Agent 上报</div></div>
+<div class="final-results-wrap"><table class="final-table agent-table"><thead><tr><th>Agent</th><th>探测源</th><th>运营商</th><th>状态</th><th>最后上报</th><th>候选</th><th>最优 IP</th><th>地区</th><th>得分</th></tr></thead><tbody id="agentRows"><tr><td colspan="9">等待 Agent 上报</td></tr></tbody></table></div>
 </section>
-<div class="section-title">数据区 / <span id="dataCarrierLabel">联通</span>测试 IP 原始数据</div>
-<div class="table-tools"><div class="segments" id="regionFilters">
+<section class="panel data-section">
+<div class="section-title-wrap"><h2 class="section-heading">IP 探测数据</h2><div id="filterInfo" class="section-copy">等待 Agent 测量结果</div></div>
+<div class="data-toolbar"><div class="segments" id="regionFilters">
 <button class="seg active" data-region="ALL">全部</button>
 <button class="seg" data-region="HK">HK</button>
 <button class="seg" data-region="US">US</button>
 <button class="seg" data-region="JP">JP</button>
 <button class="seg" data-region="SG">SG</button>
-</div><div id="filterInfo" class="hint">显示全部地区</div></div>
-<table><thead><tr>
-<th class="sortable" data-sort="ip">IP</th>
-<th class="sortable" data-sort="stage">阶段</th>
-<th class="sortable" data-sort="segment">段</th>
-<th class="sortable" data-sort="region">判定地区</th>
-<th class="sortable" data-sort="hint">判断依据</th>
-<th class="sortable" data-sort="cf_speed">CF 官方测速</th>
-<th class="sortable" data-sort="cf_mbps">估算 Mbps</th>
-<th class="sortable" data-sort="colo">CF Colo</th>
-<th class="sortable" data-sort="ping">Ping 延迟</th>
-<th class="sortable" data-sort="pingloss">Ping 丢包</th>
-<th class="sortable" data-sort="rtt">TLS 延迟</th>
-<th class="sortable" data-sort="jitter">抖动</th>
-<th class="sortable" data-sort="loss">TLS 丢包</th>
-<th class="sortable" data-sort="spike">尖刺</th>
-<th class="sortable active" data-sort="score">得分</th>
-<th>Agent</th>
-</tr></thead><tbody id="rows"></tbody></table>
+</div><div class="data-controls"><label class="search-box"><input id="dataSearch" placeholder="搜索 IP、网段或 Agent"></label><div class="column-picker"><button id="columnPickerBtn" onclick="toggleColumnMenu()">列设置 · <span id="columnCount">11 / 16</span></button><div id="columnMenu" class="column-menu"><div class="column-menu-title">显示字段</div><div id="columnGrid" class="column-grid"></div><div class="column-actions"><button onclick="resetColumns()">恢复默认</button><button class="primary" onclick="toggleColumnMenu(false)">完成</button></div></div></div><button id="sortButton" onclick="setScoreSort()">得分 ↑</button><select id="pageSizeSelect" class="toolbar-select"><option value="25">每页 25 条</option><option value="50">每页 50 条</option><option value="100">每页 100 条</option></select></div></div>
+<div id="selectionNotice" class="notice info selection-notice"><span class="notice-icon">i</span><span>检测到文本选择，表格刷新已暂停</span><button onclick="clearTableSelection()">恢复刷新</button></div>
+<div class="data-table-wrap"><table class="data-table"><thead><tr>
+<th class="sortable" data-col="ip" data-sort="ip">IP</th>
+<th class="sortable" data-col="stage" data-sort="stage">阶段</th>
+<th class="sortable" data-col="segment" data-sort="segment">网段</th>
+<th class="sortable" data-col="region" data-sort="region">判定地区</th>
+<th class="sortable" data-col="hint" data-sort="hint">判断依据</th>
+<th class="sortable" data-col="speed" data-sort="cf_speed">CF 官方测速</th>
+<th class="sortable" data-col="mbps" data-sort="cf_mbps">估算 Mbps</th>
+<th class="sortable" data-col="colo" data-sort="colo">CF Colo</th>
+<th class="sortable" data-col="ping" data-sort="ping">Ping 延迟</th>
+<th class="sortable" data-col="pingloss" data-sort="pingloss">Ping 丢包</th>
+<th class="sortable" data-col="rtt" data-sort="rtt">TLS 延迟</th>
+<th class="sortable" data-col="jitter" data-sort="jitter">抖动</th>
+<th class="sortable" data-col="loss" data-sort="loss">TLS 丢包</th>
+<th class="sortable" data-col="spike" data-sort="spike">尖刺</th>
+<th class="sortable active" data-col="score" data-sort="score">得分</th>
+<th data-col="agent">Agent</th>
+</tr></thead><tbody id="rows"></tbody></table></div>
+<div class="table-footer"><div id="pageSummary">显示 0 条</div><div class="refresh-live" id="tableRefreshStatus"><span class="live-dot"></span><span>实时数据持续接收</span></div><div id="pagination" class="pagination"></div></div>
+</section>
 </main>
 <script>
 function pct(v){ return (((v||0)*100).toFixed(0))+'%'; }
@@ -821,6 +848,12 @@ function fmt(v){ return Number.isFinite(v)?v.toFixed(1):'-'; }
 let sortState={key:'score',dir:'asc'};
 let regionFilter='ALL';
 let seedDirty=false;
+let dataQuery='';
+let dataPage=1;
+let dataPageSize=50;
+const columnLabels={ip:'IP',stage:'阶段',segment:'网段',region:'判定地区',hint:'判断依据',speed:'CF 官方测速',mbps:'估算 Mbps',colo:'CF Colo',ping:'Ping 延迟',pingloss:'Ping 丢包',rtt:'TLS 延迟',jitter:'抖动',loss:'TLS 丢包',spike:'尖刺',score:'得分',agent:'Agent'};
+const defaultColumns=['ip','stage','segment','region','hint','speed','ping','rtt','jitter','score','agent'];
+let visibleColumns=new Set(defaultColumns);
 const dashboardStateKey='cfAnycastRouter.ui.v1';
 const dashboardSortKeys=['ip','stage','segment','region','hint','cf_speed','cf_mbps','colo','ping','pingloss','rtt','jitter','loss','spike','score'];
 const dashboardRegions=['ALL','HK','US','JP','SG'];
@@ -835,7 +868,10 @@ function saveDashboardState(){
      carrier:selectedFinalCarrier,
      region:regionFilter,
      sort:sortState,
-     settings_tab:activeSettingsTab
+     settings_tab:activeSettingsTab,
+     query:dataQuery,
+     page_size:dataPageSize,
+     columns:[...visibleColumns]
    }));
  }catch(_){}
 }
@@ -846,8 +882,18 @@ function restoreDashboardState(){
  if(state.sort&&dashboardSortKeys.includes(state.sort.key)&&['asc','desc'].includes(state.sort.dir)){
    sortState={key:state.sort.key,dir:state.sort.dir};
  }
+ if(typeof state.query==='string'){ dataQuery=state.query.slice(0,120); }
+ if([25,50,100].includes(Number(state.page_size))){ dataPageSize=Number(state.page_size); }
+ if(Array.isArray(state.columns)){
+   const columns=state.columns.filter(column=>columnLabels[column]);
+   if(columns.length){ visibleColumns=new Set(columns); }
+ }
  if(settingsTabs.includes(state.settings_tab)){ activeSettingsTab=state.settings_tab; }
  document.querySelectorAll('#regionFilters .seg').forEach(btn=>btn.classList.toggle('active',btn.dataset.region===regionFilter));
+ dataSearch.value=dataQuery;
+ pageSizeSelect.value=String(dataPageSize);
+ renderColumnMenu();
+ applyVisibleColumns();
  switchSettingsTab(activeSettingsTab,false);
  updateSortHeaders();
 }
@@ -943,7 +989,7 @@ function candidateStageRank(stage){
  return order[String(stage||'')]??7;
 }
 function sortCandidates(candidates){
- const arr=[...(candidates||[])].filter(c=>matchesRegion(c));
+ const arr=[...(candidates||[])].filter(c=>matchesRegion(c)&&matchesSearch(c));
  arr.sort((a,b)=>{
    const ar=candidateStageRank(a.stage), br=candidateStageRank(b.stage);
    if(ar!==br){ return ar-br; }
@@ -956,6 +1002,11 @@ function sortCandidates(candidates){
    return sortState.dir==='asc'?cmp:-cmp;
  });
  return arr;
+}
+function matchesSearch(c){
+ if(!dataQuery){ return true; }
+ const haystack=[c.ip,c.segment,c.stage,c.region,c.route_region,c.cf_region,c.route_hint_ip,c.route_city,c.route_isp,c._agent_source].join(' ').toLowerCase();
+ return haystack.includes(dataQuery.toLowerCase());
 }
 function knownRegion(v){
  v=String(v||'').toUpperCase();
@@ -975,10 +1026,59 @@ function matchesRegion(c){
 }
 function filterSummary(candidates){
  const total=(candidates||[]).length;
- const shown=(candidates||[]).filter(c=>matchesRegion(c)).length;
+ const shown=(candidates||[]).filter(c=>matchesRegion(c)&&matchesSearch(c)).length;
  const carrier=finalCarrierLabel(selectedFinalCarrier);
- filterInfo.textContent=regionFilter==='ALL'?carrier+'全部已知地区，'+shown+' / '+total+' 条':carrier+' / '+regionFilter+'，'+shown+' / '+total+' 条';
+ filterInfo.textContent=carrier+'原始测量结果 · '+shown+' / '+total+' 条';
 }
+function renderColumnMenu(){
+ if(!columnGrid){ return; }
+ columnGrid.innerHTML=Object.entries(columnLabels).map(([key,label])=>'<label><input type="checkbox" data-column="'+key+'" '+(visibleColumns.has(key)?'checked':'')+' onchange="toggleColumn(\''+key+'\',this.checked)">'+label+'</label>').join('');
+ columnCount.textContent=visibleColumns.size+' / '+Object.keys(columnLabels).length;
+}
+function toggleColumnMenu(force){
+ const open=typeof force==='boolean'?force:!columnMenu.classList.contains('open');
+ columnMenu.classList.toggle('open',open);
+}
+function toggleColumn(column,visible){
+ if(visible){ visibleColumns.add(column); }else if(visibleColumns.size>1){ visibleColumns.delete(column); }
+ renderColumnMenu();
+ applyVisibleColumns();
+ saveDashboardState();
+}
+function resetColumns(){
+ visibleColumns=new Set(defaultColumns);
+ renderColumnMenu();
+ applyVisibleColumns();
+ saveDashboardState();
+}
+function applyVisibleColumns(){
+ document.querySelectorAll('.data-table [data-col]').forEach(cell=>{ cell.hidden=!visibleColumns.has(cell.dataset.col); });
+}
+function pageButtons(totalPages){
+ if(totalPages<=1){ return []; }
+ const pages=new Set([1,totalPages,dataPage-1,dataPage,dataPage+1]);
+ return [...pages].filter(page=>page>=1&&page<=totalPages).sort((a,b)=>a-b);
+}
+function renderPagination(total){
+ const totalPages=Math.max(1,Math.ceil(total/dataPageSize));
+ dataPage=Math.min(Math.max(1,dataPage),totalPages);
+ const start=total?((dataPage-1)*dataPageSize+1):0;
+ const end=Math.min(total,dataPage*dataPageSize);
+ pageSummary.textContent='显示 '+start+'–'+end+'，共 '+total+' 条';
+ const pages=pageButtons(totalPages);
+ let previous=0;
+ const parts=['<button class="page-btn" '+(dataPage<=1?'disabled':'')+' onclick="changePage('+(dataPage-1)+')">上一页</button>'];
+ for(const page of pages){
+   if(previous&&page-previous>1){ parts.push('<span class="page-ellipsis">…</span>'); }
+   parts.push('<button class="page-btn '+(page===dataPage?'active':'')+'" onclick="changePage('+page+')">'+page+'</button>');
+   previous=page;
+ }
+ parts.push('<button class="page-btn" '+(dataPage>=totalPages?'disabled':'')+' onclick="changePage('+(dataPage+1)+')">下一页</button>');
+ pagination.innerHTML=parts.join('');
+ return {startIndex:(dataPage-1)*dataPageSize,endIndex:dataPage*dataPageSize};
+}
+function changePage(page){ dataPage=page; renderCarrierData(agentsCache); }
+function setScoreSort(){ sortState={key:'score',dir:sortState.key==='score'&&sortState.dir==='asc'?'desc':'asc'}; dataPage=1; saveDashboardState(); renderCarrierData(agentsCache); }
 function attr(v){ return String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 function rowAttrs(values){
  return Object.entries(values).map(([k,v])=>' data-'+k+'="'+attr(v)+'"').join('');
@@ -1037,7 +1137,10 @@ function finalCarrierValues(list){
 }
 function selectFinalCarrier(carrier){
  selectedFinalCarrier=carrier;
+ dataPage=1;
  saveDashboardState();
+ updateAgentOverview(agentsCache);
+ renderScanStatus(agentsCache);
  renderCarrierFinal(agentsCache);
  renderCarrierData(agentsCache);
 }
@@ -1057,21 +1160,31 @@ function renderCarrierFinal(list){
  if(!carriers.includes(selectedFinalCarrier)){ selectedFinalCarrier=carriers[0]||'cu'; }
  finalCarrierTabs.innerHTML=carriers.map(carrier=>'<button class="seg '+(carrier===selectedFinalCarrier?'active':'')+'" onclick="selectFinalCarrier(\''+attr(carrier)+'\')">'+finalCarrierLabel(carrier)+'</button>').join('');
  const candidates=carrierCandidates(list,selectedFinalCarrier,true);
+ const carrierAgents=(list||[]).filter(agent=>String(agent.carrier||'unknown').toLowerCase()===selectedFinalCarrier);
+ const onlineAgents=carrierAgents.filter(agentOnline);
+ const newest=carrierAgents.map(agent=>agentSeenDate(agent.last_seen)).filter(Boolean).sort((a,b)=>b-a)[0];
+ const offlineOnly=carrierAgents.length>0&&onlineAgents.length===0;
+ finalNotice.classList.toggle('show',lastAgentFetchError||offlineOnly);
+ finalNoticeText.textContent=lastAgentFetchError?'最近一次 Agent 数据刷新失败，当前保留上次成功结果':(offlineOnly?'当前没有在线 '+finalCarrierLabel(selectedFinalCarrier)+' Agent，最终区不采用离线结果'+(newest?'；最近上报 '+relativeTime(newest):''):'');
  const regions=finalRegions(settingsCache,candidates,'route_region',selectedFinalCarrier);
  carrierFinalRows.innerHTML=regions.map(region=>{
    const route=bestRouteForRegion(candidates,region);
    const speed=bestSpeedForRegion(candidates,region);
    const sources=[route?route._agent_source:'',speed?speed._agent_source:''].filter(Boolean);
    const source=[...new Set(sources)].join(' / ')||'-';
-   return '<tr><td>'+region+'</td><td>'+escapeHTML(route?.ip||'-')+'</td><td>'+escapeHTML(domainForRegion(settingsCache,selectedFinalCarrier,region))+'</td><td>'+(route?fmt(route.ping_rtt_ms||route.avg_rtt_ms||0):'-')+'</td><td>'+escapeHTML(speed?.ip||'-')+'</td><td>'+(speed?fmt(speed.cf_speed_rtt_ms||0):'-')+'</td><td>'+(speed?fmt(speed.cf_speed_mbps||0):'-')+'</td><td>'+escapeHTML(source)+'</td></tr>';
+   const recommended=Boolean(route);
+   return '<tr class="'+(recommended?'recommended':'')+'"><td>'+region+(recommended?'<span class="result-badge">推荐</span>':'')+'</td><td>'+escapeHTML(route?.ip||'暂无可用结果')+'</td><td>'+escapeHTML(domainForRegion(settingsCache,selectedFinalCarrier,region))+'</td><td>'+(route?fmt(route.ping_rtt_ms||route.avg_rtt_ms||0)+' ms':'-')+'</td><td>'+escapeHTML(speed?.ip||'-')+'</td><td>'+(speed?fmt(speed.cf_speed_mbps||0):'-')+'</td><td>'+escapeHTML(source)+'</td><td class="'+(recommended?'status-good':'status-muted')+'">'+(recommended?'推荐':'待测')+'</td></tr>';
  }).join('')||'<tr><td colspan="8">'+finalCarrierLabel(selectedFinalCarrier)+'暂无在线 Agent 数据</td></tr>';
 }
 function renderCarrierData(list){
  const candidates=carrierCandidates(list,selectedFinalCarrier,false);
- dataCarrierLabel.textContent=finalCarrierLabel(selectedFinalCarrier);
  filterSummary(candidates);
- rows.innerHTML=sortCandidates(candidates).map(c=>candidateRow(c,null)).join('')||'<tr><td colspan="16">'+finalCarrierLabel(selectedFinalCarrier)+'暂无 Agent 测试数据</td></tr>';
- sortRenderedRows();
+ const filtered=sortCandidates(candidates);
+ const page=renderPagination(filtered.length);
+ rows.innerHTML=filtered.slice(page.startIndex,page.endIndex).map(c=>candidateRow(c,null)).join('')||'<tr><td colspan="16">'+finalCarrierLabel(selectedFinalCarrier)+'暂无匹配的测试数据</td></tr>';
+ updateSortHeaders();
+ applyVisibleColumns();
+ sortButton.textContent=(sortState.key==='score'?'得分':'当前排序')+(sortState.dir==='asc'?' ↑':' ↓');
 }
 function updateSortHeaders(){
  document.querySelectorAll('th.sortable').forEach(th=>{
@@ -1125,7 +1238,10 @@ function candidateRow(c,last){
  const pingText=skipped?'-':(c.ping_rtt_ms>0?fmt(c.ping_rtt_ms):(c.ping_error?'失败':'-'));
  const attrs=rowAttrs({ip:ipValue(c.ip),stage:stageLabel(c.stage),segment:c.segment||'',region,hint:reason,speedok:(c.cf_speed_rtt_ms>0&&!c.cf_speed_error)?1:0,cf_speed:skipped?999999:(c.cf_speed_rtt_ms||999999),cf_mbps:skipped?0:(c.cf_speed_mbps||0),colo,ping:skipped?999999:(c.ping_rtt_ms>0?c.ping_rtt_ms:999999),pingloss:skipped?999999:(c.ping_loss_rate||0),rtt:skipped?999999:(c.avg_rtt_ms||0),jitter:skipped?999999:(c.jitter_ms||0),loss:skipped?999999:(c.loss_rate||0),spike:skipped?999999:(c.spike_rate||0),score:skipped?999999:(Number.isFinite(c.score)?c.score:999999)});
  const agent=c._agent_source?(escapeHTML(c._agent_source)+(c._agent_online?'':'（离线）')):'-';
- return '<tr class="'+klass+'"'+attrs+' title="'+attr(c.ping_error||c.cf_speed_error||'')+'"><td>'+c.ip+'</td><td>'+stageLabel(c.stage)+'</td><td>'+(c.segment||'-')+'</td><td>'+region+'</td><td>'+reason+'</td><td>'+speedText+'</td><td>'+speedMbps+'</td><td>'+colo+'</td><td>'+pingText+'</td><td>'+(skipped?'-':pct(c.ping_loss_rate))+'</td><td>'+(skipped?'-':fmt(c.avg_rtt_ms||0))+'</td><td>'+(skipped?'-':fmt(c.jitter_ms||0))+'</td><td>'+(skipped?'-':pct(c.loss_rate))+'</td><td>'+(skipped?'-':pct(c.spike_rate))+'</td><td>'+score+'</td><td>'+agent+'</td></tr>';
+ return '<tr class="'+klass+'"'+attrs+' title="'+attr(c.ping_error||c.cf_speed_error||'')+'">'
+  +'<td data-col="ip">'+c.ip+'</td><td data-col="stage">'+stageLabel(c.stage)+'</td><td data-col="segment">'+(c.segment||'-')+'</td><td data-col="region">'+region+'</td><td data-col="hint">'+reason+'</td>'
+  +'<td data-col="speed">'+speedText+'</td><td data-col="mbps">'+speedMbps+'</td><td data-col="colo">'+colo+'</td><td data-col="ping">'+pingText+'</td><td data-col="pingloss">'+(skipped?'-':pct(c.ping_loss_rate))+'</td>'
+  +'<td data-col="rtt">'+(skipped?'-':fmt(c.avg_rtt_ms||0))+'</td><td data-col="jitter">'+(skipped?'-':fmt(c.jitter_ms||0))+'</td><td data-col="loss">'+(skipped?'-':pct(c.loss_rate))+'</td><td data-col="spike">'+(skipped?'-':pct(c.spike_rate))+'</td><td data-col="score">'+score+'</td><td data-col="agent">'+agent+'</td></tr>';
 }
 function stateRows(state){
  const rows=[];
@@ -1152,6 +1268,7 @@ let settingsCache=null;
 let controlCache=null;
 let fullStateCache=null;
 let agentsCache=[];
+let lastAgentFetchError=false;
 let agentDrafts=[];
 let agentEditorDirty=false;
 let selectedFinalCarrier='cu';
@@ -1378,6 +1495,15 @@ function agentSeenDate(value){
  const date=new Date(value);
  return Number.isFinite(date.getTime())&&date.getFullYear()>2000?date:null;
 }
+function relativeTime(value){
+ const date=value instanceof Date?value:agentSeenDate(value);
+ if(!date){ return '-'; }
+ const seconds=Math.max(0,Math.floor((Date.now()-date.getTime())/1000));
+ if(seconds<60){ return seconds+' 秒前'; }
+ if(seconds<3600){ return Math.floor(seconds/60)+' 分钟前'; }
+ if(seconds<86400){ return Math.floor(seconds/3600)+' 小时前'; }
+ return Math.floor(seconds/86400)+' 天前';
+}
 function agentOnline(a){
  const seen=agentSeenDate(a?.last_seen)?.getTime()||0;
  const threshold=Math.max(Number(settingsCache?.check_interval_seconds||300)*2000,180000);
@@ -1389,6 +1515,43 @@ function agentStatusText(a){
  if(a.status==='scanning'){ return '<span class="agent-scanning">扫描中，已完成 '+(a.candidate_count||0)+' 个候选</span>'; }
  if(a.status==='idle'){ return '本轮完成，共 '+(a.candidate_count||0)+' 个候选'; }
  return '候选 '+(a.candidate_count||0);
+}
+function renderScanStatus(list){
+ const carrierAgents=(list||[]).filter(agent=>String(agent.carrier||'unknown').toLowerCase()===selectedFinalCarrier);
+ const scanning=carrierAgents.filter(agent=>agent.status==='scanning');
+ const candidates=carrierCandidates(list,selectedFinalCarrier,false);
+ const completed=carrierAgents.reduce((sum,agent)=>sum+Number(agent.candidate_count||0),0);
+ const usable=candidates.filter(isSelectableCandidate).length;
+ const routed=candidates.filter(candidate=>knownRegion(candidate.route_region)||knownRegion(candidate.cf_region)).length;
+ const budget=Number(settingsCache?.max_route_traces_per_cycle||0);
+ const stage=scanning.length?'候选测量':(candidates.length?'结果汇总':'等待 Agent');
+ scanStage.innerHTML=stage+' <span class="scan-stage-badge">'+(scanning.length?'扫描中':'待机')+'</span>';
+ scanCount.innerHTML='已完成 <strong>'+completed+'</strong> 个候选';
+ scanRound.textContent=scanning.length?'本轮运行中 · '+scanning.length+' 个 Agent':'最近结果 · '+carrierAgents.length+' 个 Agent';
+ scanMeta.textContent='可用候选 '+usable+' · 已判定地区 '+routed+(budget?' · 单 Agent 路由预算 '+budget:'');
+ scanStep1.classList.toggle('active',Boolean(candidates.length||scanning.length));
+ scanStep2.classList.toggle('active',Boolean(scanning.length));
+ scanStep3.classList.toggle('active',!scanning.length&&Boolean(candidates.length));
+}
+function updateAgentOverview(list){
+ const agents=(list||[]).filter(agent=>String(agent.carrier||'unknown').toLowerCase()===selectedFinalCarrier&&agentOnline(agent)&&agent.best?.ip);
+ agents.sort((a,b)=>(Number(a.best?.score)||999999)-(Number(b.best?.score)||999999));
+ const agent=agents[0];
+ const liveCandidates=carrierCandidates(list,selectedFinalCarrier,true).filter(isSelectableCandidate).sort((a,b)=>(Number(a.score)||999999)-(Number(b.score)||999999));
+ const candidate=agent?.best||liveCandidates[0];
+ if(!candidate){
+   best.textContent='-';
+   bestSub.textContent='等待 '+finalCarrierLabel(selectedFinalCarrier)+' Agent 可用候选';
+   pop.textContent='-';
+   popSub.textContent='等待 Cloudflare Colo';
+   return;
+ }
+ const region=candidate.region||candidate.route_region||candidate.cf_region||'-';
+ const colo=candidate.observed_colo||candidate.observed_pop||'';
+ best.textContent=candidate.ip;
+ bestSub.textContent=((agent&&(agent.display_name||agent.probe_source||agent.agent_id))||candidate._agent_source||finalCarrierLabel(selectedFinalCarrier))+' · '+finalCarrierLabel(selectedFinalCarrier);
+ pop.textContent=region+(colo&&colo!==region?' · '+colo:'');
+ popSub.textContent=(candidate.route_city||candidate.route_country||colo||'Cloudflare')+(candidate.route_isp?' · '+candidate.route_isp:'');
 }
 function carrierOptions(value){
  return ['cu','ct','cm','unknown'].map(v=>'<option value="'+v+'"'+(v===value?' selected':'')+'>'+carrierLabel(v)+'</option>').join('');
@@ -1481,28 +1644,51 @@ async function removeAgentRecord(agentID){
 }
 function hasActiveDataSelection(){
  const selection=window.getSelection?.();
- if(!selection||selection.isCollapsed||!selection.toString().trim()){ return false; }
+ if(!selection||selection.isCollapsed||!selection.toString().trim()){
+   selectionNotice.classList.remove('show');
+   tableRefreshStatus.classList.remove('paused');
+   tableRefreshStatus.querySelector('span:last-child').textContent='实时数据持续接收';
+   return false;
+ }
  const range=selection.rangeCount?selection.getRangeAt(0):null;
  const roots=[carrierFinalRows,agentRows,rows];
- return roots.some(root=>root&&range&&range.intersectsNode(root));
+ const active=roots.some(root=>root&&range&&range.intersectsNode(root));
+ selectionNotice.classList.toggle('show',active);
+ tableRefreshStatus.classList.toggle('paused',active);
+ tableRefreshStatus.querySelector('span:last-child').textContent=active?'选区保护中':'实时数据持续接收';
+ return active;
+}
+function clearTableSelection(){
+ window.getSelection?.().removeAllRanges();
+ selectionNotice.classList.remove('show');
+ tableRefreshStatus.classList.remove('paused');
+ tableRefreshStatus.querySelector('span:last-child').textContent='实时数据持续接收';
+ renderAgents({agents:agentsCache});
 }
 function renderAgents(payload){
  const list=(payload&&payload.agents)||[];
  agentsCache=list;
  renderAgentManagement(list);
+ updateAgentOverview(list);
+ renderScanStatus(list);
+ const online=list.filter(agentOnline).length;
+ const offline=Math.max(0,list.length-online);
+ const newest=list.map(agent=>agentSeenDate(agent.last_seen)).filter(Boolean).sort((a,b)=>b-a)[0];
+ agentSummaryLine.innerHTML='<span class="status-good">●</span> '+online+' 在线 · '+offline+' 离线'+(newest?' · 最近上报 '+relativeTime(newest):'');
  if(hasActiveDataSelection()){ return; }
  renderCarrierFinal(list);
  renderCarrierData(list);
  if(!list.length){
-   agentRows.innerHTML='<tr><td colspan="8">等待 agent 上报</td></tr>';
+   agentRows.innerHTML='<tr><td colspan="9">等待 Agent 上报</td></tr>';
    return;
  }
  agentRows.innerHTML=list.map(a=>{
    const best=a.best||{};
    const seenDate=agentSeenDate(a.last_seen);
-   const seen=seenDate?seenDate.toLocaleString():'-';
+   const online=agentOnline(a);
+   const seen=seenDate?relativeTime(seenDate):'-';
    const id=[a.display_name||a.agent_id,a.hostname&&a.hostname!==a.agent_id?a.hostname:''].filter(Boolean).map(escapeHTML).join(' / ');
-   return '<tr><td>'+id+'</td><td>'+escapeHTML(a.probe_source||'-')+'</td><td>'+escapeHTML(a.carrier||'-')+'</td><td>'+seen+'</td><td>'+agentStatusText(a)+'</td><td>'+escapeHTML(best.ip||'-')+'</td><td>'+escapeHTML(best.region||best.route_region||'-')+'</td><td>'+(Number.isFinite(best.score)?best.score.toFixed(1):'-')+'</td></tr>';
+   return '<tr><td>'+id+(!online&&seenDate?'<span class="agent-name-sub">显示最后一次成功上报</span>':'')+'</td><td class="status-good">'+escapeHTML(a.probe_source||'-')+'</td><td>'+finalCarrierLabel(a.carrier)+'</td><td><span class="status-pill '+(online?'':'offline')+'"><span class="status-dot '+(online?'online':'offline')+'"></span>'+(online?'在线':'离线')+'</span></td><td>'+seen+'</td><td>'+escapeHTML(a.status==='scanning'?'扫描中 · '+a.candidate_count+' 个':a.candidate_count+' 个')+'</td><td>'+escapeHTML(best.ip||'-')+'</td><td>'+escapeHTML(best.region||best.route_region||'-')+'</td><td>'+(Number.isFinite(best.score)?best.score.toFixed(1):'-')+'</td></tr>';
  }).join('');
 }
 async function refresh(){
@@ -1516,22 +1702,36 @@ async function refresh(){
    fetch('/api/agents?ts='+Date.now()).then(r=>r.json()).catch(()=>null)
  ]);
  if(settings&&!settings.error){ settingsCache=settings; }
- renderAgents(agents);
+ if(agents&&Array.isArray(agents.agents)){
+   lastAgentFetchError=false;
+   renderAgents(agents);
+ }else{
+   lastAgentFetchError=true;
+   renderAgents({agents:agentsCache});
+ }
  if(control&&!control.error){ controlCache=control; applyControl(control); }
  if(seeds&&seeds.text&&!seedDirty&&document.activeElement!==seedInput){ seedInput.value=seeds.text; }
+ lastUpdated.textContent='最近更新：刚刚';
 if(last&&last.candidates){
    mode.textContent=controlModeText(controlCache,'实时探测');
    current.textContent=last.current_ip||state?.current_ip||'-';
-   best.textContent=last.best?.ip||'-';
-   pop.textContent=last.best?.region||last.best?.route_region||'-';
    decision.textContent=decisionLabel(last.decision);
+   currentSub.textContent=last.current_ip?'当前调度入口':'尚未选出活动入口';
+   updateAgentOverview(agentsCache);
+   const decisionText=String(last.decision||'');
+   decisionTitle.textContent=decisionText.startsWith('switched:')?'已切换':(decisionText.includes('kept current')||decisionText.includes('保持当前')?'保持当前':'等待判断');
    return;
  }
  mode.textContent=controlModeText(controlCache,'状态快照');
  current.textContent=state?.current_ip||'-';
- best.textContent='-';
- pop.textContent='-';
  decision.textContent=decisionLabel(state?.last_decision)||'等待首次探测';
+ currentSub.textContent='状态快照';
+ updateAgentOverview(agentsCache);
+ decisionTitle.textContent='等待判断';
+}
+async function refreshNow(){
+ lastUpdated.textContent='正在刷新...';
+ await refresh();
 }
 async function saveSeeds(){
  seedMsg.textContent='正在保存种子...';
@@ -1552,6 +1752,7 @@ function applyControl(control){
  const paused=Boolean(control?.paused);
  stopBtn.disabled=paused;
  startBtn.disabled=!paused;
+ liveStatus.querySelector('.live-dot').classList.toggle('paused',paused);
  mode.textContent=controlModeText(control,mode.textContent||'状态快照');
 }
 function controlModeText(control,fallback){
@@ -1594,7 +1795,11 @@ async function refreshLoop(){
 restoreDashboardState();
 refreshLoop();
 seedInput.addEventListener('input',()=>{ seedDirty=true; });
-document.addEventListener('keydown',event=>{ if(event.key==='Escape'){ closeSettings(); } });
+dataSearch.addEventListener('input',()=>{ dataQuery=dataSearch.value.trim(); dataPage=1; saveDashboardState(); renderCarrierData(agentsCache); });
+pageSizeSelect.addEventListener('change',()=>{ dataPageSize=Number(pageSizeSelect.value)||50; dataPage=1; saveDashboardState(); renderCarrierData(agentsCache); });
+document.addEventListener('selectionchange',()=>{ hasActiveDataSelection(); });
+document.addEventListener('click',event=>{ if(!columnMenu.contains(event.target)&&event.target!==columnPickerBtn){ toggleColumnMenu(false); } });
+document.addEventListener('keydown',event=>{ if(event.key==='Escape'){ closeSettings(); toggleColumnMenu(false); } });
 document.querySelectorAll('#regionFilters .seg').forEach(btn=>{
  btn.addEventListener('click',()=>{
    regionFilter=btn.dataset.region;
@@ -1608,8 +1813,9 @@ document.querySelectorAll('th.sortable').forEach(th=>{
    const key=th.dataset.sort;
    if(sortState.key===key){ sortState.dir=sortState.dir==='asc'?'desc':'asc'; }
    else { sortState={key,dir:['cf_speed','cf_mbps','ping','pingloss','rtt','jitter','loss','spike','score'].includes(key)?'asc':'asc'}; }
+   dataPage=1;
    saveDashboardState();
-   sortRenderedRows();
+   renderCarrierData(agentsCache);
  });
 });
 </script>

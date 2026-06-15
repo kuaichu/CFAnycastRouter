@@ -96,6 +96,27 @@ func TestDashboardPreservesSelectedTableTextDuringRefresh(t *testing.T) {
 	}
 }
 
+func TestDashboardIncludesOperationalDataControls(t *testing.T) {
+	s := New(0, "", "", nil, nil, nil, nil, nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	s.handleIndex(rec, req)
+
+	body := rec.Body.String()
+	for _, expected := range []string{
+		`id="scanStage"`,
+		`id="dataSearch"`,
+		`id="columnMenu"`,
+		`id="pagination"`,
+		"function renderPagination(total)",
+		"function renderScanStatus(list)",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("dashboard is missing operational UI marker %q", expected)
+		}
+	}
+}
+
 func TestStateSummaryDoesNotReturnFullHistory(t *testing.T) {
 	path := t.TempDir() + "/state.json"
 	st := history.New()
