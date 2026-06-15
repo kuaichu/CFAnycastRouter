@@ -59,6 +59,25 @@ func TestShutdownHandlerPausesAutomaticScanning(t *testing.T) {
 	}
 }
 
+func TestDashboardPersistsViewSelections(t *testing.T) {
+	s := New(0, "", "", nil, nil, nil, nil, nil)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	s.handleIndex(rec, req)
+
+	body := rec.Body.String()
+	for _, expected := range []string{
+		"cfAnycastRouter.ui.v1",
+		"restoreDashboardState();",
+		"saveDashboardState();",
+		"settings_tab:activeSettingsTab",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("dashboard is missing persistent view state marker %q", expected)
+		}
+	}
+}
+
 func TestStateSummaryDoesNotReturnFullHistory(t *testing.T) {
 	path := t.TempDir() + "/state.json"
 	st := history.New()

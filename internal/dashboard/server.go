@@ -821,6 +821,36 @@ function fmt(v){ return Number.isFinite(v)?v.toFixed(1):'-'; }
 let sortState={key:'score',dir:'asc'};
 let regionFilter='ALL';
 let seedDirty=false;
+const dashboardStateKey='cfAnycastRouter.ui.v1';
+const dashboardSortKeys=['ip','stage','segment','region','hint','cf_speed','cf_mbps','colo','ping','pingloss','rtt','jitter','loss','spike','score'];
+const dashboardRegions=['ALL','HK','US','JP','SG'];
+const settingsTabs=['basic','budget','speed','dns','agent','agents'];
+function readDashboardState(){
+ try{ return JSON.parse(localStorage.getItem(dashboardStateKey)||'{}')||{}; }
+ catch(_){ return {}; }
+}
+function saveDashboardState(){
+ try{
+   localStorage.setItem(dashboardStateKey,JSON.stringify({
+     carrier:selectedFinalCarrier,
+     region:regionFilter,
+     sort:sortState,
+     settings_tab:activeSettingsTab
+   }));
+ }catch(_){}
+}
+function restoreDashboardState(){
+ const state=readDashboardState();
+ if(typeof state.carrier==='string'&&state.carrier){ selectedFinalCarrier=state.carrier.toLowerCase(); }
+ if(dashboardRegions.includes(state.region)){ regionFilter=state.region; }
+ if(state.sort&&dashboardSortKeys.includes(state.sort.key)&&['asc','desc'].includes(state.sort.dir)){
+   sortState={key:state.sort.key,dir:state.sort.dir};
+ }
+ if(settingsTabs.includes(state.settings_tab)){ activeSettingsTab=state.settings_tab; }
+ document.querySelectorAll('#regionFilters .seg').forEach(btn=>btn.classList.toggle('active',btn.dataset.region===regionFilter));
+ switchSettingsTab(activeSettingsTab,false);
+ updateSortHeaders();
+}
 function stageLabel(v){
  const map={
    'seed':'种子',
@@ -1007,6 +1037,7 @@ function finalCarrierValues(list){
 }
 function selectFinalCarrier(carrier){
  selectedFinalCarrier=carrier;
+ saveDashboardState();
  renderCarrierFinal(agentsCache);
  renderCarrierData(agentsCache);
 }
@@ -1124,11 +1155,15 @@ let agentsCache=[];
 let agentDrafts=[];
 let agentEditorDirty=false;
 let selectedFinalCarrier='cu';
+let activeSettingsTab='basic';
 let modalScrollY=0;
-function switchSettingsTab(tab){
+function switchSettingsTab(tab,persist=true){
+ if(!settingsTabs.includes(tab)){ tab='basic'; }
+ activeSettingsTab=tab;
  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.tab===tab));
  document.querySelectorAll('.settings-pane').forEach(x=>x.style.display=x.id==='settings-'+tab?'block':'none');
  saveSettingsBtn.style.display=(tab==='agent'||tab==='agents')?'none':'';
+ if(persist){ saveDashboardState(); }
 }
 async function openSettings(){
  modalScrollY=window.scrollY;
@@ -1548,6 +1583,7 @@ async function refreshLoop(){
  const slow=controlCache?.paused&&!controlCache?.scanning;
  setTimeout(refreshLoop,slow?10000:1500);
 }
+restoreDashboardState();
 refreshLoop();
 seedInput.addEventListener('input',()=>{ seedDirty=true; });
 document.addEventListener('keydown',event=>{ if(event.key==='Escape'){ closeSettings(); } });
@@ -1555,6 +1591,7 @@ document.querySelectorAll('#regionFilters .seg').forEach(btn=>{
  btn.addEventListener('click',()=>{
    regionFilter=btn.dataset.region;
    document.querySelectorAll('#regionFilters .seg').forEach(x=>x.classList.toggle('active',x===btn));
+   saveDashboardState();
    renderCarrierData(agentsCache);
  });
 });
@@ -1563,6 +1600,7 @@ document.querySelectorAll('th.sortable').forEach(th=>{
    const key=th.dataset.sort;
    if(sortState.key===key){ sortState.dir=sortState.dir==='asc'?'desc':'asc'; }
    else { sortState={key,dir:['cf_speed','cf_mbps','ping','pingloss','rtt','jitter','loss','spike','score'].includes(key)?'asc':'asc'}; }
+   saveDashboardState();
    sortRenderedRows();
  });
 });
