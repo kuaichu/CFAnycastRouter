@@ -117,12 +117,26 @@ type SpeedTestConfig struct {
 }
 
 type ManageSettings struct {
-	ProbeSource            string              `json:"probe_source"`
-	Carrier                string              `json:"carrier"`
-	CheckIntervalSec       int                 `json:"check_interval_seconds"`
-	MaxRouteTracesPerCycle int                 `json:"max_route_traces_per_cycle"`
-	CloudflareDNS          CloudflareDNSConfig `json:"cloudflare_dns"`
-	SpeedTest              SpeedTestConfig     `json:"speed_test"`
+	ProbeSource                  string              `json:"probe_source"`
+	Carrier                      string              `json:"carrier"`
+	CheckIntervalSec             int                 `json:"check_interval_seconds"`
+	ProbeAttempts                int                 `json:"probe_attempts"`
+	ProbeTimeoutSec              int                 `json:"probe_timeout_seconds"`
+	SpikeThreshold               float64             `json:"spike_threshold_ms"`
+	SpikeMultiplier              float64             `json:"spike_multiplier"`
+	MaxRouteTracesPerCycle       int                 `json:"max_route_traces_per_cycle"`
+	SampleStep                   int                 `json:"sample_step"`
+	SeedCIDRStep                 int                 `json:"seed_cidr_step"`
+	SeedPreflightMaxPerCycle     int                 `json:"seed_preflight_max_per_cycle"`
+	MaxSeedSegmentsPerCycle      int                 `json:"max_seed_segments_per_cycle"`
+	MaxLearnedSegmentsPerCycle   int                 `json:"max_learned_segments_per_cycle"`
+	MaxSamplesPerSegmentPerCycle int                 `json:"max_samples_per_segment_per_cycle"`
+	PromoteMinSamples            int                 `json:"promote_min_samples"`
+	PromotePOPProbability        float64             `json:"promote_pop_probability"`
+	HotMaxPerSegment             int                 `json:"hot_max_per_segment"`
+	HotMaxScore                  float64             `json:"hot_max_score"`
+	CloudflareDNS                CloudflareDNSConfig `json:"cloudflare_dns"`
+	SpeedTest                    SpeedTestConfig     `json:"speed_test"`
 }
 
 func Load(path string) (*Config, error) {
@@ -499,12 +513,26 @@ func (c *Config) PreferredPOPSet() map[string]bool {
 
 func (c *Config) ManageSettings() ManageSettings {
 	return ManageSettings{
-		ProbeSource:            c.ProbeSource,
-		Carrier:                c.Carrier,
-		CheckIntervalSec:       c.CheckIntervalSec,
-		MaxRouteTracesPerCycle: c.MaxRouteTracesPerCycle,
-		CloudflareDNS:          c.CloudflareDNS,
-		SpeedTest:              c.SpeedTest,
+		ProbeSource:                  c.ProbeSource,
+		Carrier:                      c.Carrier,
+		CheckIntervalSec:             c.CheckIntervalSec,
+		ProbeAttempts:                c.ProbeAttempts,
+		ProbeTimeoutSec:              c.ProbeTimeoutSec,
+		SpikeThreshold:               c.SpikeThreshold,
+		SpikeMultiplier:              c.SpikeMultiplier,
+		MaxRouteTracesPerCycle:       c.MaxRouteTracesPerCycle,
+		SampleStep:                   c.SampleStep,
+		SeedCIDRStep:                 c.SeedCIDRStep,
+		SeedPreflightMaxPerCycle:     c.SeedPreflightMaxPerCycle,
+		MaxSeedSegmentsPerCycle:      c.MaxSeedSegmentsPerCycle,
+		MaxLearnedSegmentsPerCycle:   c.MaxLearnedSegmentsPerCycle,
+		MaxSamplesPerSegmentPerCycle: c.MaxSamplesPerSegmentPerCycle,
+		PromoteMinSamples:            c.PromoteMinSamples,
+		PromotePOPProbability:        c.PromotePOPProbability,
+		HotMaxPerSegment:             c.HotMaxPerSegment,
+		HotMaxScore:                  c.HotMaxScore,
+		CloudflareDNS:                c.CloudflareDNS,
+		SpeedTest:                    c.SpeedTest,
 	}
 }
 
@@ -627,7 +655,21 @@ func SaveManageSettings(path string, settings ManageSettings) (*Config, error) {
 	cfg.ProbeSource = strings.TrimSpace(settings.ProbeSource)
 	cfg.Carrier = strings.TrimSpace(settings.Carrier)
 	cfg.CheckIntervalSec = settings.CheckIntervalSec
+	cfg.ProbeAttempts = settings.ProbeAttempts
+	cfg.ProbeTimeoutSec = settings.ProbeTimeoutSec
+	cfg.SpikeThreshold = settings.SpikeThreshold
+	cfg.SpikeMultiplier = settings.SpikeMultiplier
 	cfg.MaxRouteTracesPerCycle = settings.MaxRouteTracesPerCycle
+	cfg.SampleStep = settings.SampleStep
+	cfg.SeedCIDRStep = settings.SeedCIDRStep
+	cfg.SeedPreflightMaxPerCycle = settings.SeedPreflightMaxPerCycle
+	cfg.MaxSeedSegmentsPerCycle = settings.MaxSeedSegmentsPerCycle
+	cfg.MaxLearnedSegmentsPerCycle = settings.MaxLearnedSegmentsPerCycle
+	cfg.MaxSamplesPerSegmentPerCycle = settings.MaxSamplesPerSegmentPerCycle
+	cfg.PromoteMinSamples = settings.PromoteMinSamples
+	cfg.PromotePOPProbability = settings.PromotePOPProbability
+	cfg.HotMaxPerSegment = settings.HotMaxPerSegment
+	cfg.HotMaxScore = settings.HotMaxScore
 	cfg.CloudflareDNS = settings.CloudflareDNS
 	cfg.SpeedTest = settings.SpeedTest
 	if cfg.ProbeSource == "" {
@@ -658,7 +700,21 @@ func saveManageSettingsNode(path string, cfg *Config) error {
 	upsertScalar(mapping, "probe_source", cfg.ProbeSource)
 	upsertScalar(mapping, "carrier", cfg.Carrier)
 	upsertScalarWithTag(mapping, "check_interval_seconds", fmt.Sprintf("%d", cfg.CheckIntervalSec), "!!int")
+	upsertScalarWithTag(mapping, "probe_attempts", fmt.Sprintf("%d", cfg.ProbeAttempts), "!!int")
+	upsertScalarWithTag(mapping, "probe_timeout_seconds", fmt.Sprintf("%d", cfg.ProbeTimeoutSec), "!!int")
+	upsertScalarWithTag(mapping, "spike_threshold_ms", fmt.Sprintf("%g", cfg.SpikeThreshold), "!!float")
+	upsertScalarWithTag(mapping, "spike_multiplier", fmt.Sprintf("%g", cfg.SpikeMultiplier), "!!float")
 	upsertScalarWithTag(mapping, "max_route_traces_per_cycle", fmt.Sprintf("%d", cfg.MaxRouteTracesPerCycle), "!!int")
+	upsertScalarWithTag(mapping, "sample_step", fmt.Sprintf("%d", cfg.SampleStep), "!!int")
+	upsertScalarWithTag(mapping, "seed_cidr_step", fmt.Sprintf("%d", cfg.SeedCIDRStep), "!!int")
+	upsertScalarWithTag(mapping, "seed_preflight_max_per_cycle", fmt.Sprintf("%d", cfg.SeedPreflightMaxPerCycle), "!!int")
+	upsertScalarWithTag(mapping, "max_seed_segments_per_cycle", fmt.Sprintf("%d", cfg.MaxSeedSegmentsPerCycle), "!!int")
+	upsertScalarWithTag(mapping, "max_learned_segments_per_cycle", fmt.Sprintf("%d", cfg.MaxLearnedSegmentsPerCycle), "!!int")
+	upsertScalarWithTag(mapping, "max_samples_per_segment_per_cycle", fmt.Sprintf("%d", cfg.MaxSamplesPerSegmentPerCycle), "!!int")
+	upsertScalarWithTag(mapping, "promote_min_samples", fmt.Sprintf("%d", cfg.PromoteMinSamples), "!!int")
+	upsertScalarWithTag(mapping, "promote_pop_probability", fmt.Sprintf("%g", cfg.PromotePOPProbability), "!!float")
+	upsertScalarWithTag(mapping, "hot_max_per_segment", fmt.Sprintf("%d", cfg.HotMaxPerSegment), "!!int")
+	upsertScalarWithTag(mapping, "hot_max_score", fmt.Sprintf("%g", cfg.HotMaxScore), "!!float")
 	upsertCloudflareDNS(mapping, cfg.CloudflareDNS)
 	upsertSpeedTest(mapping, cfg.SpeedTest)
 	var buf bytes.Buffer

@@ -610,6 +610,7 @@ button.ghost{background:transparent}button.danger{background:#3a151a;border-colo
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px}.field label{display:block;color:#c7d5e8;font-weight:600;margin-bottom:6px}
 .field input,.field select{width:100%;box-sizing:border-box;background:#071018;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font:14px ui-monospace,SFMono-Regular,Consolas,monospace}
 .field input:focus,.field select:focus{outline:none;border-color:#18c99b;box-shadow:0 0 0 3px rgba(24,201,155,.14)}
+.settings-group-title{margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--line);color:var(--text);font-size:13px;font-weight:700}.settings-group-title:first-child{margin-top:0;padding-top:0;border-top:0}
 .check-row{display:flex;gap:8px;align-items:center;color:#c7d5e8;margin:10px 0}.check-row input{width:auto}
 .record-list{display:grid;gap:10px;margin-top:10px}.record-row{display:grid;grid-template-columns:80px 72px 72px 1fr 80px 40px;gap:8px;align-items:center}
 .record-row input,.record-row select{background:#071018;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px}
@@ -669,14 +670,40 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <div id="settingsModal" class="modal" onclick="if(event.target===this)closeSettings()">
 <div class="modal-card">
 <div class="modal-head"><div><h2>管理设置</h2><div class="hint">修改后会写入配置文件，下一轮检测使用新设置。</div></div><button class="icon-btn" onclick="closeSettings()">×</button></div>
-<div class="tabs"><div class="tab active" data-tab="basic" onclick="switchSettingsTab('basic')">基础设置</div><div class="tab" data-tab="speed" onclick="switchSettingsTab('speed')">官方测速</div><div class="tab" data-tab="dns" onclick="switchSettingsTab('dns')">地区解析</div><div class="tab" data-tab="agent" onclick="switchSettingsTab('agent')">Agent 安装</div><div class="tab" data-tab="agents" onclick="switchSettingsTab('agents')">Agent 管理</div></div>
+<div class="tabs"><div class="tab active" data-tab="basic" onclick="switchSettingsTab('basic')">基础设置</div><div class="tab" data-tab="budget" onclick="switchSettingsTab('budget')">扫描预算</div><div class="tab" data-tab="speed" onclick="switchSettingsTab('speed')">官方测速</div><div class="tab" data-tab="dns" onclick="switchSettingsTab('dns')">地区解析</div><div class="tab" data-tab="agent" onclick="switchSettingsTab('agent')">Agent 安装</div><div class="tab" data-tab="agents" onclick="switchSettingsTab('agents')">Agent 管理</div></div>
 <section id="settings-basic" class="settings-pane">
 <div class="form-grid">
 <div class="field"><label>探测源说明</label><input id="setProbeSource" placeholder="宁波联通"></div>
 <div class="field"><label>运营商策略</label><select id="setCarrier"><option value="auto">自动识别</option><option value="cu">联通</option><option value="ct">电信</option><option value="cm">移动</option><option value="unknown">未知</option></select></div>
 <div class="field"><label>检测间隔（秒）</label><input id="setInterval" type="number" min="10" step="10"></div>
-<div class="field"><label>本轮路由追踪预算</label><input id="setTraceBudget" type="number" min="1" step="1"></div>
 </div>
+</section>
+<section id="settings-budget" class="settings-pane" style="display:none">
+<div class="settings-group-title">单 IP 探测</div>
+<div class="form-grid">
+<div class="field"><label>每个 IP 探测次数</label><input id="setProbeAttempts" type="number" min="1" max="20" step="1"></div>
+<div class="field"><label>单次探测超时（秒）</label><input id="setProbeTimeout" type="number" min="1" max="30" step="1"></div>
+<div class="field"><label>本轮路由追踪预算</label><input id="setTraceBudget" type="number" min="1" step="1"></div>
+<div class="field"><label>尖刺判定阈值（ms）</label><input id="setSpikeThreshold" type="number" min="1" step="5"></div>
+<div class="field"><label>尖刺倍率</label><input id="setSpikeMultiplier" type="number" min="1" step="0.1"></div>
+</div>
+<div class="settings-group-title">段抽样预算</div>
+<div class="form-grid">
+<div class="field"><label>种子段预检上限 / 轮</label><input id="setSeedPreflight" type="number" min="1" step="1"></div>
+<div class="field"><label>种子段上限 / 轮</label><input id="setSeedSegments" type="number" min="1" step="1"></div>
+<div class="field"><label>学习段上限 / 轮</label><input id="setLearnedSegments" type="number" min="0" step="1"></div>
+<div class="field"><label>每段样本数 / 轮</label><input id="setSamplesPerSegment" type="number" min="1" step="1"></div>
+<div class="field"><label>段内 IP 步进</label><input id="setSampleStep" type="number" min="1" step="1"></div>
+<div class="field"><label>种子 CIDR 步进</label><input id="setSeedCIDRStep" type="number" min="1" step="1"></div>
+</div>
+<div class="settings-group-title">学习与热点</div>
+<div class="form-grid">
+<div class="field"><label>晋级最少样本</label><input id="setPromoteMinSamples" type="number" min="1" step="1"></div>
+<div class="field"><label>晋级命中率（%）</label><input id="setPromoteProbability" type="number" min="1" max="100" step="1"></div>
+<div class="field"><label>每段热点 IP 上限</label><input id="setHotMaxPerSegment" type="number" min="1" step="1"></div>
+<div class="field"><label>热点最高得分</label><input id="setHotMaxScore" type="number" min="1" step="1"></div>
+</div>
+<div class="small">母鸡统一下发这些参数，在线 Agent 会在下一轮任务开始时采用新预算。</div>
 </section>
 <section id="settings-speed" class="settings-pane" style="display:none">
 <label class="check-row"><input id="setSpeedEnabled" type="checkbox"> 启用 Cloudflare 官方下载测速</label>
@@ -731,7 +758,7 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <div class="k">Agent 列表</div>
 <table class="final-table"><thead><tr><th>Agent</th><th>探测源</th><th>运营商</th><th>最后上报</th><th>候选</th><th>最优 IP</th><th>地区</th><th>得分</th></tr></thead><tbody id="agentRows"><tr><td colspan="8">等待 agent 上报</td></tr></tbody></table>
 </section>
-<div class="section-title">数据区 / 测试 IP 原始数据</div>
+<div class="section-title">数据区 / <span id="dataCarrierLabel">联通</span>测试 IP 原始数据</div>
 <div class="table-tools"><div class="segments" id="regionFilters">
 <button class="seg active" data-region="ALL">全部</button>
 <button class="seg" data-region="HK">HK</button>
@@ -756,6 +783,7 @@ th{color:var(--muted);font-size:12px}th.sortable{cursor:pointer;user-select:none
 <th class="sortable" data-sort="loss">TLS 丢包</th>
 <th class="sortable" data-sort="spike">尖刺</th>
 <th class="sortable active" data-sort="score">得分</th>
+<th>Agent</th>
 </tr></thead><tbody id="rows"></tbody></table>
 </main>
 <script>
@@ -870,7 +898,8 @@ function matchesRegion(c){
 function filterSummary(candidates){
  const total=(candidates||[]).length;
  const shown=(candidates||[]).filter(c=>matchesRegion(c)).length;
- filterInfo.textContent=regionFilter==='ALL'?'显示全部地区，共 '+total+' 条':'仅显示 '+regionFilter+'，'+shown+' / '+total+' 条';
+ const carrier=finalCarrierLabel(selectedFinalCarrier);
+ filterInfo.textContent=regionFilter==='ALL'?carrier+'全部地区，共 '+total+' 条':carrier+' / '+regionFilter+'，'+shown+' / '+total+' 条';
 }
 function attr(v){ return String(v??'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 function rowAttrs(values){
@@ -930,17 +959,24 @@ function finalCarrierValues(list){
 function selectFinalCarrier(carrier){
  selectedFinalCarrier=carrier;
  renderCarrierFinal(agentsCache);
+ renderCarrierData(agentsCache);
+}
+function carrierCandidates(list,carrier,onlineOnly){
+ const candidates=[];
+ for(const agent of list||[]){
+   if(String(agent.carrier||'unknown').toLowerCase()!==carrier||!agent.result||(onlineOnly&&!agentOnline(agent))){ continue; }
+   const source=agent.display_name||agent.probe_source||agent.agent_id||'-';
+   for(const candidate of agent.result.candidates||[]){
+     candidates.push({...candidate,_agent_source:source,_agent_best_ip:agent.best?.ip||'',_agent_online:agentOnline(agent)});
+   }
+ }
+ return candidates;
 }
 function renderCarrierFinal(list){
  const carriers=finalCarrierValues(list);
  if(!carriers.includes(selectedFinalCarrier)){ selectedFinalCarrier=carriers[0]||'cu'; }
  finalCarrierTabs.innerHTML=carriers.map(carrier=>'<button class="seg '+(carrier===selectedFinalCarrier?'active':'')+'" onclick="selectFinalCarrier(\''+attr(carrier)+'\')">'+finalCarrierLabel(carrier)+'</button>').join('');
- const candidates=[];
- for(const agent of list||[]){
-   if(String(agent.carrier||'unknown').toLowerCase()!==selectedFinalCarrier||!agent.result||!agentOnline(agent)){ continue; }
-   const source=agent.display_name||agent.probe_source||agent.agent_id||'-';
-   for(const candidate of agent.result.candidates||[]){ candidates.push({...candidate,_agent_source:source}); }
- }
+ const candidates=carrierCandidates(list,selectedFinalCarrier,true);
  const regions=finalRegions(settingsCache,candidates,'route_region',selectedFinalCarrier);
  carrierFinalRows.innerHTML=regions.map(region=>{
    const route=bestRouteForRegion(candidates,region);
@@ -949,6 +985,13 @@ function renderCarrierFinal(list){
    const source=[...new Set(sources)].join(' / ')||'-';
    return '<tr><td>'+region+'</td><td>'+escapeHTML(route?.ip||'-')+'</td><td>'+escapeHTML(domainForRegion(settingsCache,selectedFinalCarrier,region))+'</td><td>'+(route?fmt(route.ping_rtt_ms||route.avg_rtt_ms||0):'-')+'</td><td>'+escapeHTML(speed?.ip||'-')+'</td><td>'+(speed?fmt(speed.cf_speed_rtt_ms||0):'-')+'</td><td>'+(speed?fmt(speed.cf_speed_mbps||0):'-')+'</td><td>'+escapeHTML(source)+'</td></tr>';
  }).join('')||'<tr><td colspan="8">'+finalCarrierLabel(selectedFinalCarrier)+'暂无在线 Agent 数据</td></tr>';
+}
+function renderCarrierData(list){
+ const candidates=carrierCandidates(list,selectedFinalCarrier,false);
+ dataCarrierLabel.textContent=finalCarrierLabel(selectedFinalCarrier);
+ filterSummary(candidates);
+ rows.innerHTML=sortCandidates(candidates).map(c=>candidateRow(c,null)).join('')||'<tr><td colspan="16">'+finalCarrierLabel(selectedFinalCarrier)+'暂无 Agent 测试数据</td></tr>';
+ sortRenderedRows();
 }
 function updateSortHeaders(){
  document.querySelectorAll('th.sortable').forEach(th=>{
@@ -978,7 +1021,7 @@ function sortRenderedRows(){
  updateSortHeaders();
 }
 function candidateRow(c,last){
- const klass=c.error?'bad':(last&&last.best&&last.best.ip===c.ip?'best':'');
+ const klass=c.error?'bad':((c._agent_best_ip===c.ip||(last&&last.best&&last.best.ip===c.ip))?'best':'');
  const skipped=Boolean(c.error||c.quarantined);
  const score=skipped?'跳过':(Number.isFinite(c.score)?c.score.toFixed(1):'跳过');
  const colo=(c.observed_colo&&c.observed_pop&&c.observed_colo!==c.observed_pop)?(c.observed_colo+' / '+c.observed_pop):(c.observed_colo||c.observed_pop||'-');
@@ -993,7 +1036,8 @@ function candidateRow(c,last){
    : ((source&&source!=='-'?source+'：':'')+(hint||decisionLabel(c.route_error||c.error)||'-'));
  const pingText=skipped?'-':(c.ping_rtt_ms>0?fmt(c.ping_rtt_ms):(c.ping_error?'失败':'-'));
  const attrs=rowAttrs({ip:ipValue(c.ip),stage:stageLabel(c.stage),segment:c.segment||'',region,hint:reason,speedok:(c.cf_speed_rtt_ms>0&&!c.cf_speed_error)?1:0,cf_speed:skipped?999999:(c.cf_speed_rtt_ms||999999),cf_mbps:skipped?0:(c.cf_speed_mbps||0),colo,ping:skipped?999999:(c.ping_rtt_ms>0?c.ping_rtt_ms:999999),pingloss:skipped?999999:(c.ping_loss_rate||0),rtt:skipped?999999:(c.avg_rtt_ms||0),jitter:skipped?999999:(c.jitter_ms||0),loss:skipped?999999:(c.loss_rate||0),spike:skipped?999999:(c.spike_rate||0),score:skipped?999999:(Number.isFinite(c.score)?c.score:999999)});
- return '<tr class="'+klass+'"'+attrs+' title="'+attr(c.ping_error||c.cf_speed_error||'')+'"><td>'+c.ip+'</td><td>'+stageLabel(c.stage)+'</td><td>'+(c.segment||'-')+'</td><td>'+region+'</td><td>'+reason+'</td><td>'+speedText+'</td><td>'+speedMbps+'</td><td>'+colo+'</td><td>'+pingText+'</td><td>'+(skipped?'-':pct(c.ping_loss_rate))+'</td><td>'+(skipped?'-':fmt(c.avg_rtt_ms||0))+'</td><td>'+(skipped?'-':fmt(c.jitter_ms||0))+'</td><td>'+(skipped?'-':pct(c.loss_rate))+'</td><td>'+(skipped?'-':pct(c.spike_rate))+'</td><td>'+score+'</td></tr>';
+ const agent=c._agent_source?(escapeHTML(c._agent_source)+(c._agent_online?'':'（离线）')):'-';
+ return '<tr class="'+klass+'"'+attrs+' title="'+attr(c.ping_error||c.cf_speed_error||'')+'"><td>'+c.ip+'</td><td>'+stageLabel(c.stage)+'</td><td>'+(c.segment||'-')+'</td><td>'+region+'</td><td>'+reason+'</td><td>'+speedText+'</td><td>'+speedMbps+'</td><td>'+colo+'</td><td>'+pingText+'</td><td>'+(skipped?'-':pct(c.ping_loss_rate))+'</td><td>'+(skipped?'-':fmt(c.avg_rtt_ms||0))+'</td><td>'+(skipped?'-':fmt(c.jitter_ms||0))+'</td><td>'+(skipped?'-':pct(c.loss_rate))+'</td><td>'+(skipped?'-':pct(c.spike_rate))+'</td><td>'+score+'</td><td>'+agent+'</td></tr>';
 }
 function stateRows(state){
  const rows=[];
@@ -1096,7 +1140,21 @@ function fillSettings(s){
  setProbeSource.value=s.probe_source||'';
  setCarrier.value=s.carrier||'auto';
  setInterval.value=s.check_interval_seconds||300;
- setTraceBudget.value=s.max_route_traces_per_cycle||96;
+ setProbeAttempts.value=s.probe_attempts||5;
+ setProbeTimeout.value=s.probe_timeout_seconds||3;
+ setSpikeThreshold.value=s.spike_threshold_ms||120;
+ setSpikeMultiplier.value=s.spike_multiplier||2;
+ setTraceBudget.value=s.max_route_traces_per_cycle||24;
+ setSampleStep.value=s.sample_step||4;
+ setSeedCIDRStep.value=s.seed_cidr_step||16;
+ setSeedPreflight.value=s.seed_preflight_max_per_cycle||256;
+ setSeedSegments.value=s.max_seed_segments_per_cycle||8;
+ setLearnedSegments.value=s.max_learned_segments_per_cycle??16;
+ setSamplesPerSegment.value=s.max_samples_per_segment_per_cycle||8;
+ setPromoteMinSamples.value=s.promote_min_samples||6;
+ setPromoteProbability.value=Math.round((s.promote_pop_probability||0.7)*100);
+ setHotMaxPerSegment.value=s.hot_max_per_segment||8;
+ setHotMaxScore.value=s.hot_max_score||95;
  const dns=s.cloudflare_dns||{};
  setDnsEnabled.checked=Boolean(dns.enabled);
  setZoneName.value=dns.zone_name||'';
@@ -1143,7 +1201,21 @@ function collectSettings(){
    probe_source:setProbeSource.value.trim(),
    carrier:setCarrier.value,
    check_interval_seconds:Number(setInterval.value)||300,
-   max_route_traces_per_cycle:Number(setTraceBudget.value)||96,
+   probe_attempts:Number(setProbeAttempts.value)||5,
+   probe_timeout_seconds:Number(setProbeTimeout.value)||3,
+   spike_threshold_ms:Number(setSpikeThreshold.value)||120,
+   spike_multiplier:Number(setSpikeMultiplier.value)||2,
+   max_route_traces_per_cycle:Number(setTraceBudget.value)||24,
+   sample_step:Number(setSampleStep.value)||4,
+   seed_cidr_step:Number(setSeedCIDRStep.value)||16,
+   seed_preflight_max_per_cycle:Number(setSeedPreflight.value)||256,
+   max_seed_segments_per_cycle:Number(setSeedSegments.value)||8,
+   max_learned_segments_per_cycle:Math.max(0,Number(setLearnedSegments.value)||0),
+   max_samples_per_segment_per_cycle:Number(setSamplesPerSegment.value)||8,
+   promote_min_samples:Number(setPromoteMinSamples.value)||6,
+   promote_pop_probability:(Number(setPromoteProbability.value)||70)/100,
+   hot_max_per_segment:Number(setHotMaxPerSegment.value)||8,
+   hot_max_score:Number(setHotMaxScore.value)||95,
    cloudflare_dns:{
      enabled:setDnsEnabled.checked,
      zone_id:setZoneID.value.trim(),
@@ -1282,6 +1354,7 @@ function renderAgents(payload){
  agentsCache=list;
  renderAgentManagement(list);
  renderCarrierFinal(list);
+ renderCarrierData(list);
  if(!list.length){
    agentRows.innerHTML='<tr><td colspan="8">等待 agent 上报</td></tr>';
    return;
@@ -1314,9 +1387,6 @@ if(last&&last.candidates){
    best.textContent=last.best?.ip||'-';
    pop.textContent=last.best?.region||last.best?.route_region||'-';
    decision.textContent=decisionLabel(last.decision);
-   filterSummary(last.candidates||[]);
-   rows.innerHTML=sortCandidates(last.candidates||[]).map(c=>candidateRow(c,last)).join('');
-   sortRenderedRows();
    return;
  }
  mode.textContent=controlModeText(controlCache,'状态快照');
@@ -1324,11 +1394,6 @@ if(last&&last.candidates){
  best.textContent='-';
  pop.textContent='-';
  decision.textContent=decisionLabel(state?.last_decision)||'等待首次探测';
- if(!fullStateCache){
-   fullStateCache=await fetch('/api/state?full=1&ts='+Date.now()).then(r=>r.json()).catch(()=>null);
- }
- rows.innerHTML=stateRows(fullStateCache||{})||'<tr><td colspan="15">暂无扫描状态。请运行 cf-router once config.yaml 或 cf-router run config.yaml。</td></tr>';
- sortRenderedRows();
 }
 async function saveSeeds(){
  seedMsg.textContent='正在保存种子...';
@@ -1395,7 +1460,7 @@ document.querySelectorAll('#regionFilters .seg').forEach(btn=>{
  btn.addEventListener('click',()=>{
    regionFilter=btn.dataset.region;
    document.querySelectorAll('#regionFilters .seg').forEach(x=>x.classList.toggle('active',x===btn));
-   refresh();
+   renderCarrierData(agentsCache);
  });
 });
 document.querySelectorAll('th.sortable').forEach(th=>{

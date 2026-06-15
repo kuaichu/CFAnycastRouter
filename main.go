@@ -354,7 +354,22 @@ func settingsCallback(cfg *config.Config) dashboard.SettingsFunc {
 		cfg.Carrier = next.Carrier
 		cfg.CheckIntervalSec = next.CheckIntervalSec
 		cfg.CheckInterval = next.CheckInterval
+		cfg.ProbeAttempts = next.ProbeAttempts
+		cfg.ProbeTimeoutSec = next.ProbeTimeoutSec
+		cfg.ProbeTimeout = next.ProbeTimeout
+		cfg.SpikeThreshold = next.SpikeThreshold
+		cfg.SpikeMultiplier = next.SpikeMultiplier
 		cfg.MaxRouteTracesPerCycle = next.MaxRouteTracesPerCycle
+		cfg.SampleStep = next.SampleStep
+		cfg.SeedCIDRStep = next.SeedCIDRStep
+		cfg.SeedPreflightMaxPerCycle = next.SeedPreflightMaxPerCycle
+		cfg.MaxSeedSegmentsPerCycle = next.MaxSeedSegmentsPerCycle
+		cfg.MaxLearnedSegmentsPerCycle = next.MaxLearnedSegmentsPerCycle
+		cfg.MaxSamplesPerSegmentPerCycle = next.MaxSamplesPerSegmentPerCycle
+		cfg.PromoteMinSamples = next.PromoteMinSamples
+		cfg.PromotePOPProbability = next.PromotePOPProbability
+		cfg.HotMaxPerSegment = next.HotMaxPerSegment
+		cfg.HotMaxScore = next.HotMaxScore
 		cfg.CloudflareDNS = next.CloudflareDNS
 		cfg.SpeedTest = next.SpeedTest
 		return nil
