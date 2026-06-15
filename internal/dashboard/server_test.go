@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -117,6 +118,17 @@ func TestAgentBinaryDownload(t *testing.T) {
 	s.handleAgentBinary(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("invalid download status=%d want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestAgentBinaryPathUsesRunningExecutableForCurrentPlatform(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("executable path: %v", err)
+	}
+	name := "cf-router-" + runtime.GOOS + "-" + runtime.GOARCH
+	if got := agentBinaryPath(name); got != executable {
+		t.Fatalf("binary path=%q want running executable %q", got, executable)
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -201,7 +202,7 @@ func (s *Server) handleAgentBinary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	path := filepath.Join(".", "dist", name)
+	path := agentBinaryPath(name)
 	if _, err := os.Stat(path); err != nil {
 		http.Error(w, "agent binary not found: "+err.Error(), http.StatusNotFound)
 		return
@@ -209,6 +210,16 @@ func (s *Server) handleAgentBinary(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, name))
 	http.ServeFile(w, r, path)
+}
+
+func agentBinaryPath(name string) string {
+	currentName := fmt.Sprintf("cf-router-%s-%s", runtime.GOOS, runtime.GOARCH)
+	if name == currentName {
+		if executable, err := os.Executable(); err == nil {
+			return executable
+		}
+	}
+	return filepath.Join(".", "dist", name)
 }
 
 func (s *Server) handleSourceArchive(w http.ResponseWriter, r *http.Request) {
