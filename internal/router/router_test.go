@@ -83,3 +83,23 @@ func TestRouteRegionCandidateFallsBackToEffectiveRegion(t *testing.T) {
 		t.Fatalf("failed conflicting route record region=%s want JP", got)
 	}
 }
+
+func TestSpeedShortlistIncludesBestCandidatePerRegion(t *testing.T) {
+	candidates := []Candidate{
+		{IP: "108.162.198.1", Stage: "hot", Region: "JP", Score: 10},
+		{IP: "108.162.198.2", Stage: "hot", Region: "JP", Score: 11},
+		{IP: "108.162.198.3", Stage: "hot", Region: "JP", Score: 12},
+		{IP: "108.162.198.4", Stage: "hot", Region: "JP", Score: 13},
+		{IP: "108.162.198.5", Stage: "hot", Region: "JP", Score: 14},
+		{IP: "104.17.151.222", Stage: "seed-sample", Region: "US", CFRegion: "US", Score: 640},
+		{IP: "104.17.151.226", Stage: "seed-sample", Region: "US", CFRegion: "US", Score: 650},
+	}
+
+	got := speedShortlistIndexes(candidates, 5)
+	if len(got) != 6 {
+		t.Fatalf("selected %d candidates, want 6: %#v", len(got), got)
+	}
+	if got[5] != 5 {
+		t.Fatalf("regional speed shortlist appended index %d, want US index 5: %#v", got[5], got)
+	}
+}

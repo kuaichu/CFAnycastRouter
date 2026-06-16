@@ -495,16 +495,7 @@ func (r *Router) applySpeedShortlist(candidates []Candidate) {
 	if !r.cfg.SpeedTest.Enabled || r.cfg.SpeedTest.TopN <= 0 {
 		return
 	}
-	var selected []int
-	for i := range candidates {
-		if len(selected) >= r.cfg.SpeedTest.TopN {
-			break
-		}
-		if !isSelectableCandidate(candidates[i]) {
-			continue
-		}
-		selected = append(selected, i)
-	}
+	selected := speedShortlistIndexes(candidates, r.cfg.SpeedTest.TopN)
 	var wg sync.WaitGroup
 	wg.Add(len(selected))
 	for _, idx := range selected {
@@ -518,6 +509,42 @@ func (r *Router) applySpeedShortlist(candidates []Candidate) {
 		}(idx)
 	}
 	wg.Wait()
+}
+
+func speedShortlistIndexes(candidates []Candidate, topN int) []int {
+	if topN <= 0 {
+		return nil
+	}
+	selected := make([]int, 0, topN)
+	seen := make(map[int]bool)
+	add := func(i int) {
+		if seen[i] {
+			return
+		}
+		seen[i] = true
+		selected = append(selected, i)
+	}
+	for i := range candidates {
+		if len(selected) >= topN {
+			break
+		}
+		if isSelectableCandidate(candidates[i]) {
+			add(i)
+		}
+	}
+	seenRegions := make(map[string]bool)
+	for i := range candidates {
+		if !isSelectableCandidate(candidates[i]) {
+			continue
+		}
+		region := candidateRecordRegion(candidates[i])
+		if !isKnownRegion(region) || seenRegions[region] {
+			continue
+		}
+		seenRegions[region] = true
+		add(i)
+	}
+	return selected
 }
 
 func applySpeedResult(c *Candidate, speed probe.Result, bytes int64) {
