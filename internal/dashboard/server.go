@@ -607,7 +607,7 @@ button.ghost{background:transparent}button.danger{background:#3a151a;border-colo
 .modal-head{display:flex;justify-content:space-between;gap:18px;align-items:flex-start;margin-bottom:18px}
 .modal h2{font-size:24px;margin:0}.settings-layout{display:grid;grid-template-columns:170px minmax(0,1fr);gap:18px;align-items:start}.tabs{position:sticky;top:0;display:grid;gap:6px;border:1px solid var(--line);border-radius:8px;padding:6px;background:rgba(7,16,24,.34);margin:0}
 .tab{padding:9px 10px;color:var(--muted);cursor:pointer;border:1px solid transparent;border-radius:6px}.tab.active{color:#d8fff0;background:#123325;border-color:#236a4b}.tab:hover{color:var(--text);border-color:#344255}
-.settings-content{min-width:0}.settings-pane{display:block}.settings-card{background:rgba(18,24,32,.72);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:12px}.settings-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.settings-card-title{font-weight:700;color:var(--text)}.settings-card .small{margin-top:4px}
+.settings-content{min-width:0}.settings-pane{display:block}.settings-card{background:rgba(18,24,32,.72);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:12px}.settings-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.settings-card-title{font-weight:700;color:var(--text)}.settings-card .small{margin-top:4px}.preset-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.preset-row button{padding:6px 10px;font-size:12px}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}.form-grid.compact{grid-template-columns:repeat(4,minmax(0,1fr))}.field label{display:block;color:#c7d5e8;font-weight:600;margin-bottom:6px}
 .field input,.field select{width:100%;box-sizing:border-box;background:#071018;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:14px ui-monospace,SFMono-Regular,Consolas,monospace}
 .field input:focus,.field select:focus{outline:none;border-color:#18c99b;box-shadow:0 0 0 3px rgba(24,201,155,.14)}
@@ -706,7 +706,7 @@ button{border-radius:5px;background:#111d27;border-color:#304150;padding:7px 12p
 <div class="settings-card-head"><div><div class="settings-card-title">母鸡调度</div><div class="small">安装命令和在线 Agent 都使用这里的母鸡地址。</div></div></div>
 <div class="form-grid">
 <div class="field"><label>母鸡地址</label><input id="agentServerURL" oninput="this.dataset.autoDefault='0';updateAgentInstallCommand()" placeholder="http://172.23.93.195:19199"></div>
-<div class="field"><label>检测间隔（秒）</label><input id="setInterval" type="number" min="10" step="10"></div>
+<div class="field"><label>测量间隔（分钟）</label><input id="setInterval" type="number" min="1" step="1"><div class="preset-row"><button type="button" onclick="setMeasurementIntervalMinutes(20)">20 分钟</button><button type="button" onclick="setMeasurementIntervalMinutes(30)">30 分钟</button></div><div class="small">每轮测量结束后等待再开始下一轮；建议 20-30 分钟，避免 nexttrace 限流。</div></div>
 </div>
 </div>
 </section>
@@ -1370,7 +1370,7 @@ function fillSettings(s){
    agentServerURL.value=defaultAgentServerURL();
    agentServerURL.dataset.autoDefault='1';
  }
- setInterval.value=s.check_interval_seconds||300;
+ setInterval.value=Math.max(1,Math.round((s.check_interval_seconds||1800)/60));
  setProbeAttempts.value=s.probe_attempts||5;
  setProbeTimeout.value=s.probe_timeout_seconds||3;
  setSpikeThreshold.value=s.spike_threshold_ms||120;
@@ -1407,6 +1407,9 @@ function fillSettings(s){
  setSpeedTopN.value=speed.top_n||5;
  if(!agentServerURL.value){ resetAgentInstallCommand(); }
  updateAgentInstallCommand();
+}
+function setMeasurementIntervalMinutes(minutes){
+ setInterval.value=Math.max(1,Number(minutes)||30);
 }
 function addRecordRow(record={}){
  const row=document.createElement('div');
@@ -1463,7 +1466,7 @@ function collectSettings(){
    probe_source:setProbeSource.value.trim(),
    carrier:setCarrier.value,
    server_url:(agentServerURL.value||defaultAgentServerURL()).trim().replace(/\/+$/,''),
-   check_interval_seconds:Number(setInterval.value)||300,
+   check_interval_seconds:Math.max(60,Math.round(Number(setInterval.value)||30)*60),
    probe_attempts:Number(setProbeAttempts.value)||5,
    probe_timeout_seconds:Number(setProbeTimeout.value)||3,
    spike_threshold_ms:Number(setSpikeThreshold.value)||120,
@@ -1522,7 +1525,7 @@ function relativeTime(value){
 }
 function agentOnline(a){
  const seen=agentSeenDate(a?.last_seen)?.getTime()||0;
- const threshold=Math.max(Number(settingsCache?.check_interval_seconds||300)*2000,180000);
+ const threshold=Math.max(Number(settingsCache?.check_interval_seconds||1800)*2000,180000);
  return seen>0&&Date.now()-seen<=threshold;
 }
 function carrierLabel(value){ return ({cu:'中国联通',ct:'中国电信',cm:'中国移动',unknown:'未知'})[value]||value||'未知'; }

@@ -168,7 +168,7 @@ func defaults() *Config {
 		SpikeThreshold:               120,
 		SpikeMultiplier:              2.0,
 		MaxRouteTracesPerCycle:       24,
-		CheckIntervalSec:             300,
+		CheckIntervalSec:             1800,
 		SwitchStableRounds:           3,
 		SwitchImprovementPct:         15,
 		FastSwitchLossRate:           0.03,
@@ -247,7 +247,7 @@ func (c *Config) normalize() error {
 		c.MaxRouteTracesPerCycle = 24
 	}
 	if c.CheckIntervalSec < 1 {
-		c.CheckIntervalSec = 300
+		c.CheckIntervalSec = 1800
 	}
 	if c.SwitchStableRounds < 1 {
 		c.SwitchStableRounds = 1

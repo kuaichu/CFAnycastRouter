@@ -20,7 +20,7 @@ spike_multiplier: 2.0
 route_trace_command: ""
 route_trace_args: []
 max_route_traces_per_cycle: 96
-check_interval_seconds: 300
+check_interval_seconds: 1800
 switch_stable_rounds: 3
 switch_improvement_percent: 15
 fast_switch_loss_rate: 0.03

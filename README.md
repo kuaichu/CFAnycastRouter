@@ -116,6 +116,8 @@ go run . agent agent.yaml
 
 母鸡维护 CF 种子段、采样预算、Cloudflare 官方测速参数和 dashboard。Agent 不保存全局策略，不更新 Cloudflare DNS，只负责从自己的真实网络出口测量并上报。
 
+测量间隔由母鸡配置 `check_interval_seconds` 下发给 Agent，默认 1800 秒；后台管理里按分钟调整，建议保持 20-30 分钟以避免 nexttrace 请求过密。
+
 Cloudflare DNS 记录按“运营商 + 地区”分别维护，例如联通美国线路使用 `cu-cf-us.example.com`，电信香港线路使用 `ct-cf-hk.example.com`。母鸡只会使用相同运营商 Agent 的候选更新对应记录。
 
 母鸡启动：
