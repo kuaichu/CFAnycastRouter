@@ -1528,6 +1528,7 @@ function agentOnline(a){
 function carrierLabel(value){ return ({cu:'中国联通',ct:'中国电信',cm:'中国移动',unknown:'未知'})[value]||value||'未知'; }
 function agentStatusText(a){
  if(a.last_error){ return '<span class="agent-error">错误：'+escapeHTML(a.last_error)+'</span>'; }
+ if(a.status==='paused'){ return '<span class="status-muted">已暂停，等待恢复探测</span>'; }
  if(a.status==='scanning'){ return '<span class="agent-scanning">扫描中，已完成 '+(a.candidate_count||0)+' 个候选</span>'; }
  if(a.status==='idle'){ return '本轮完成，共 '+(a.candidate_count||0)+' 个候选'; }
  return '候选 '+(a.candidate_count||0);
@@ -1704,7 +1705,8 @@ function renderAgents(payload){
    const online=agentOnline(a);
    const seen=seenDate?relativeTime(seenDate):'-';
    const id=[a.display_name||a.agent_id,a.hostname&&a.hostname!==a.agent_id?a.hostname:''].filter(Boolean).map(escapeHTML).join(' / ');
-   return '<tr><td>'+id+(!online&&seenDate?'<span class="agent-name-sub">显示最后一次成功上报</span>':'')+'</td><td class="status-good">'+escapeHTML(a.probe_source||'-')+'</td><td>'+finalCarrierLabel(a.carrier)+'</td><td><span class="status-pill '+(online?'':'offline')+'"><span class="status-dot '+(online?'online':'offline')+'"></span>'+(online?'在线':'离线')+'</span></td><td>'+seen+'</td><td>'+escapeHTML(a.status==='scanning'?'扫描中 · '+a.candidate_count+' 个':a.candidate_count+' 个')+'</td><td>'+escapeHTML(best.ip||'-')+'</td><td>'+escapeHTML(best.region||best.route_region||'-')+'</td><td>'+(Number.isFinite(best.score)?best.score.toFixed(1):'-')+'</td></tr>';
+   const statusText=a.status==='paused'?'已暂停':(a.status==='scanning'?'扫描中 · '+a.candidate_count+' 个':a.candidate_count+' 个');
+   return '<tr><td>'+id+(!online&&seenDate?'<span class="agent-name-sub">显示最后一次成功上报</span>':'')+'</td><td class="status-good">'+escapeHTML(a.probe_source||'-')+'</td><td>'+finalCarrierLabel(a.carrier)+'</td><td><span class="status-pill '+(online?'':'offline')+'"><span class="status-dot '+(online?'online':'offline')+'"></span>'+(online?'在线':'离线')+'</span></td><td>'+seen+'</td><td>'+escapeHTML(statusText)+'</td><td>'+escapeHTML(best.ip||'-')+'</td><td>'+escapeHTML(best.region||best.route_region||'-')+'</td><td>'+(Number.isFinite(best.score)?best.score.toFixed(1):'-')+'</td></tr>';
  }).join('');
 }
 async function refresh(){

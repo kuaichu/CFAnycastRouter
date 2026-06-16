@@ -25,6 +25,7 @@ type Runner struct {
 	state  *history.State
 	router *router.Router
 	client *http.Client
+	paused bool
 }
 
 func New(cfg *config.Config, st *history.State, rt *router.Router) *Runner {
@@ -55,6 +56,9 @@ func (r *Runner) Run(ctx context.Context) error {
 		if interval <= 0 {
 			interval = 5 * time.Minute
 		}
+		if r.paused {
+			interval = 15 * time.Second
+		}
 		log.Printf("[agent] next report in %s", interval)
 		timer := time.NewTimer(interval)
 		select {
@@ -72,6 +76,11 @@ func (r *Runner) runOnce(ctx context.Context, agentID string) error {
 		return err
 	}
 	r.applyAssignment(assignment)
+	r.paused = assignment.Paused
+	if assignment.Paused {
+		log.Printf("[agent] paused by server")
+		return r.postReport(ctx, r.newReport(agentID, "paused", "", nil))
+	}
 	if err := r.postReport(ctx, r.newReport(agentID, "scanning", "", nil)); err != nil {
 		return fmt.Errorf("register agent: %w", err)
 	}

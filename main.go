@@ -42,7 +42,9 @@ func main() {
 	case "run":
 		runLoop(cfgPath, cfg, st, rt)
 	case "server", "hub":
-		d := dashboard.New(cfg.WebPort, cfg.StatePath, cfgPath, nil, nil, nil, nil, nil)
+		pausePath := autoScanPausePath(cfg)
+		control := newRunControl(loadAutoScanPaused(pausePath))
+		d := dashboard.New(cfg.WebPort, cfg.StatePath, cfgPath, nil, nil, nil, settingsCallback(cfg), controlCallback(control, pausePath))
 		d.SetAgentTokenEnv(cfg.AgentTokenEnv)
 		d.Start()
 		waitForInterrupt()

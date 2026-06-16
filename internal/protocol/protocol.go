@@ -9,6 +9,7 @@ import (
 
 type AgentAssignment struct {
 	ServerTime                   time.Time              `json:"server_time"`
+	Paused                       bool                   `json:"paused"`
 	ProbeSource                  string                 `json:"probe_source"`
 	Carrier                      string                 `json:"carrier"`
 	TraceHost                    string                 `json:"trace_host"`

@@ -244,6 +244,13 @@ func (s *Server) handleAgentConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	assignment := assignmentFromConfig(cfg)
+	if s.onControl != nil {
+		if status, err := s.onControl("status"); err == nil {
+			assignment.Paused = status.Paused
+		} else {
+			log.Printf("[agent] load control status: %v", err)
+		}
+	}
 	if snapshot, ok := s.agents.get(r.URL.Query().Get("agent_id")); ok && snapshot.Managed {
 		assignment.ProbeSource = snapshot.ProbeSource
 		assignment.Carrier = snapshot.Carrier
