@@ -93,13 +93,14 @@ func TestSpeedShortlistIncludesBestCandidatePerRegion(t *testing.T) {
 		{IP: "108.162.198.5", Stage: "hot", Region: "JP", Score: 14},
 		{IP: "104.17.151.222", Stage: "seed-sample", Region: "US", CFRegion: "US", Score: 640},
 		{IP: "104.17.151.226", Stage: "seed-sample", Region: "US", CFRegion: "US", Score: 650},
+		{IP: "104.17.151.230", Stage: "seed-sample", Region: "US", CFRegion: "US", Score: 660},
 	}
 
 	got := speedShortlistIndexes(candidates, 5)
-	if len(got) != 7 {
-		t.Fatalf("selected %d candidates, want 7: %#v", len(got), got)
+	if len(got) != 8 {
+		t.Fatalf("selected %d candidates, want 8: %#v", len(got), got)
 	}
-	if got[5] != 5 || got[6] != 6 {
-		t.Fatalf("regional speed shortlist appended indexes %v, want US indexes 5 and 6: %#v", got[5:], got)
+	if got[5] != 5 || got[6] != 6 || got[7] != 7 {
+		t.Fatalf("regional speed shortlist appended indexes %v, want all US indexes: %#v", got[5:], got)
 	}
 }

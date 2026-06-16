@@ -1124,12 +1124,17 @@ function bestRouteForRegion(candidates,region){
 }
 function bestSpeedForRegion(candidates,region){
  let best=null, bestScore=Number.POSITIVE_INFINITY;
+ let failed=null, failedScore=Number.POSITIVE_INFINITY;
  for(const c of candidates||[]){
-   if(!isSelectableCandidate(c)||candidateRegion(c)!==region||!(c.cf_speed_rtt_ms>0)){ continue; }
+   if(!isSelectableCandidate(c)||candidateRegion(c)!==region){ continue; }
+   if(!(c.cf_speed_rtt_ms>0)){
+     if(c.cf_speed_tested&&routeDnsScore(c)<failedScore){ failed=c; failedScore=routeDnsScore(c); }
+     continue;
+   }
    const score=(c.cf_speed_rtt_ms||9999)+(c.cf_speed_jitter_ms||0)*0.5+(c.cf_speed_loss_rate||0)*800;
    if(score<bestScore){ best=c; bestScore=score; }
  }
- return best;
+ return best||failed;
 }
 function finalCarrierLabel(value){
  return ({cu:'联通',ct:'电信',cm:'移动',unknown:'未知'})[value]||String(value||'未知').toUpperCase();
@@ -1180,7 +1185,11 @@ function renderCarrierFinal(list){
    const sources=[route?route._agent_source:'',speed?speed._agent_source:''].filter(Boolean);
    const source=[...new Set(sources)].join(' / ')||'-';
    const recommended=Boolean(route);
-   return '<tr class="'+(recommended?'recommended':'')+'"><td>'+region+(recommended?'<span class="result-badge">推荐</span>':'')+'</td><td>'+escapeHTML(route?.ip||'暂无可用结果')+'</td><td>'+escapeHTML(domainForRegion(settingsCache,selectedFinalCarrier,region))+'</td><td>'+(route?fmt(route.ping_rtt_ms||route.avg_rtt_ms||0)+' ms':'-')+'</td><td>'+escapeHTML(speed?.ip||'-')+'</td><td>'+(speed?fmt(speed.cf_speed_mbps||0):'-')+'</td><td>'+escapeHTML(source)+'</td><td class="'+(recommended?'status-good':'status-muted')+'">'+(recommended?'推荐':'待测')+'</td></tr>';
+   const speedOK=speed&&speed.cf_speed_rtt_ms>0&&!speed.cf_speed_error;
+   const speedIP=speed?speed.ip:'-';
+   const speedMbps=speedOK?fmt(speed.cf_speed_mbps||0):(speed?.cf_speed_tested?'失败':'-');
+   const status=recommended?(speed&& !speedOK?'测速失败':'推荐'):'待测';
+   return '<tr class="'+(recommended?'recommended':'')+'"><td>'+region+(recommended?'<span class="result-badge">推荐</span>':'')+'</td><td>'+escapeHTML(route?.ip||'暂无可用结果')+'</td><td>'+escapeHTML(domainForRegion(settingsCache,selectedFinalCarrier,region))+'</td><td>'+(route?fmt(route.ping_rtt_ms||route.avg_rtt_ms||0)+' ms':'-')+'</td><td>'+escapeHTML(speedIP)+'</td><td>'+speedMbps+'</td><td>'+escapeHTML(source)+'</td><td class="'+(recommended&&(!speed||speedOK)?'status-good':'status-muted')+'">'+status+'</td></tr>';
  }).join('')||'<tr><td colspan="8">'+finalCarrierLabel(selectedFinalCarrier)+'暂无在线 Agent 数据</td></tr>';
 }
 function renderCarrierData(list){

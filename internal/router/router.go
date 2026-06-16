@@ -532,13 +532,17 @@ func speedShortlistIndexes(candidates []Candidate, topN int) []int {
 			add(i)
 		}
 	}
+	perRegionLimit := topN * 4
+	if perRegionLimit > 20 {
+		perRegionLimit = 20
+	}
 	regionCounts := make(map[string]int)
 	for i := range candidates {
 		if !isSelectableCandidate(candidates[i]) {
 			continue
 		}
 		region := candidateRecordRegion(candidates[i])
-		if !isKnownRegion(region) || regionCounts[region] >= topN {
+		if !isKnownRegion(region) || regionCounts[region] >= perRegionLimit {
 			continue
 		}
 		regionCounts[region]++
