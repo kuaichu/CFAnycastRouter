@@ -90,6 +90,46 @@ type geoCacheEntry struct {
 	expiresAt time.Time
 }
 
+type routeHintSelector struct{}
+
+const (
+	baseRouteConfidence  = 0.65
+	nearTargetConfidence = 0.85
+	cloudflareBonus      = 0.10
+	targetHintPenalty    = 0.20
+	maxRouteConfidence   = 0.98
+	nearTargetHopWindow  = 3
+)
+
+type traceRegionRule struct {
+	country     string
+	countryCode string
+	city        string
+	terms       []string
+}
+
+type traceNetworkRule struct {
+	isp string
+	asn string
+	any []string
+}
+
+var traceRegionRules = []traceRegionRule{
+	{country: "Hong Kong", countryCode: "HK", city: "Hong Kong", terms: []string{"hong kong", "香港", "newthk", ".hk.", "-hk", "_hk", "hkg"}},
+	{country: "Singapore", countryCode: "SG", city: "Singapore", terms: []string{"singapore", "新加坡"}},
+	{country: "Japan", countryCode: "JP", terms: []string{"japan", "日本", "tokyo"}},
+	{country: "United States", countryCode: "US", terms: []string{"united states", "美国", "los angeles", "california"}},
+	{country: "Canada", countryCode: "CA", terms: []string{"canada", "加拿大"}},
+	{country: "Germany", countryCode: "DE", terms: []string{"germany", "德国"}},
+	{country: "China", countryCode: "CN", terms: []string{"china", "中国"}},
+}
+
+var traceNetworkRules = []traceNetworkRule{
+	{isp: "Cloudflare, Inc.", asn: "AS13335 Cloudflare, Inc.", any: []string{"cloudflare"}},
+	{isp: "NTT America, Inc.", asn: "AS2914 NTT America, Inc.", any: []string{"ntt"}},
+	{isp: "China Unicom", any: []string{"unicom", "china169"}},
+}
+
 func Trace(ip string, timeout time.Duration) Result {
 	return TraceWithOptions(ip, timeout, TraceOptions{})
 }
@@ -525,48 +565,22 @@ func parseEmbeddedGeoInfos(raw string) map[string]geoInfo {
 func geoInfoFromTraceLine(line string) (geoInfo, bool) {
 	lower := strings.ToLower(line)
 	info := geoInfo{Status: "success"}
-	switch {
-	case strings.Contains(lower, "hong kong") || strings.Contains(line, "香港") || strings.Contains(lower, "newthk") || strings.Contains(lower, ".hk.") || strings.Contains(lower, "-hk") || strings.Contains(lower, "_hk") || strings.Contains(lower, "hkg"):
-		info.Country = "Hong Kong"
-		info.CountryCode = "HK"
-		info.City = "Hong Kong"
-	case strings.Contains(lower, "singapore") || strings.Contains(line, "新加坡"):
-		info.Country = "Singapore"
-		info.CountryCode = "SG"
-		info.City = "Singapore"
-	case strings.Contains(lower, "japan") || strings.Contains(line, "日本") || strings.Contains(lower, "tokyo"):
-		info.Country = "Japan"
-		info.CountryCode = "JP"
-		if strings.Contains(lower, "tokyo") {
-			info.City = "Tokyo"
-		}
-	case strings.Contains(lower, "united states") || strings.Contains(line, "美国") || strings.Contains(lower, "los angeles") || strings.Contains(lower, "california"):
-		info.Country = "United States"
-		info.CountryCode = "US"
-		if strings.Contains(lower, "los angeles") {
-			info.City = "Los Angeles"
-		}
-	case strings.Contains(lower, "canada") || strings.Contains(line, "加拿大"):
-		info.Country = "Canada"
-		info.CountryCode = "CA"
-	case strings.Contains(lower, "germany") || strings.Contains(line, "德国"):
-		info.Country = "Germany"
-		info.CountryCode = "DE"
-	case strings.Contains(lower, "china") || strings.Contains(line, "中国"):
-		info.Country = "China"
-		info.CountryCode = "CN"
-	default:
+	rule, ok := matchTraceRegion(lower)
+	if !ok {
 		return geoInfo{}, false
 	}
-	switch {
-	case strings.Contains(lower, "cloudflare"):
-		info.ISP = "Cloudflare, Inc."
-		info.AS = "AS13335 Cloudflare, Inc."
-	case strings.Contains(lower, "ntt"):
-		info.ISP = "NTT America, Inc."
-		info.AS = "AS2914 NTT America, Inc."
-	case strings.Contains(lower, "unicom") || strings.Contains(lower, "china169"):
-		info.ISP = "China Unicom"
+	info.Country = rule.country
+	info.CountryCode = rule.countryCode
+	info.City = rule.city
+	if rule.countryCode == "JP" && strings.Contains(lower, "tokyo") {
+		info.City = "Tokyo"
+	}
+	if rule.countryCode == "US" && strings.Contains(lower, "los angeles") {
+		info.City = "Los Angeles"
+	}
+	if network, ok := matchTraceNetwork(lower); ok {
+		info.ISP = network.isp
+		info.AS = network.asn
 	}
 	if match := asnPattern.FindString(line); match != "" {
 		if info.AS == "" {
@@ -578,7 +592,51 @@ func geoInfoFromTraceLine(line string) (geoInfo, bool) {
 	return info, true
 }
 
+func matchTraceRegion(lower string) (traceRegionRule, bool) {
+	for _, rule := range traceRegionRules {
+		if containsAny(lower, rule.terms) {
+			return rule, true
+		}
+	}
+	return traceRegionRule{}, false
+}
+
+func matchTraceNetwork(lower string) (traceNetworkRule, bool) {
+	for _, rule := range traceNetworkRules {
+		if containsAny(lower, rule.any) {
+			return rule, true
+		}
+	}
+	return traceNetworkRule{}, false
+}
+
+func containsAny(value string, terms []string) bool {
+	for _, term := range terms {
+		if strings.Contains(value, term) {
+			return true
+		}
+	}
+	return false
+}
+
 func pickRouteHint(target string, hops []string, infos map[string]geoInfo) *geoInfo {
+	return routeHintSelector{}.Pick(target, hops, infos)
+}
+
+func (routeHintSelector) Pick(target string, hops []string, infos map[string]geoInfo) *geoInfo {
+	limit := targetLimit(target, hops)
+	if info := pickLastMatchingHop(target, hops, infos, limit, isCloudflareInfo); info != nil {
+		return info
+	}
+	return pickLastMatchingHop(target, hops, infos, limit, func(info geoInfo) bool {
+		// For Anycast classification, early domestic carrier hops only describe
+		// the local access path. Use the last non-mainland hop before the target
+		// as the route-region hint when no Cloudflare hop is geocoded.
+		return regionFromGeo(info) != "CN"
+	})
+}
+
+func targetLimit(target string, hops []string) int {
 	limit := len(hops)
 	for i, hop := range hops {
 		if hop == target {
@@ -589,6 +647,10 @@ func pickRouteHint(target string, hops []string, infos map[string]geoInfo) *geoI
 	if limit <= 0 {
 		limit = len(hops)
 	}
+	return limit
+}
+
+func pickLastMatchingHop(target string, hops []string, infos map[string]geoInfo, limit int, match func(geoInfo) bool) *geoInfo {
 	for i := limit - 1; i >= 0; i-- {
 		hop := hops[i]
 		if hop == target {
@@ -598,23 +660,7 @@ func pickRouteHint(target string, hops []string, infos map[string]geoInfo) *geoI
 		if !ok {
 			continue
 		}
-		if strings.Contains(strings.ToLower(info.ISP+" "+info.AS), "cloudflare") {
-			return &info
-		}
-	}
-	for i := limit - 1; i >= 0; i-- {
-		hop := hops[i]
-		if hop == target {
-			continue
-		}
-		info, ok := infos[hop]
-		if !ok {
-			continue
-		}
-		// For Anycast classification, early domestic carrier hops only describe
-		// the local access path. Use the last non-mainland hop before the target
-		// as the route-region hint when no Cloudflare hop is geocoded.
-		if regionFromGeo(info) != "CN" {
+		if match(info) {
 			return &info
 		}
 	}
@@ -675,21 +721,21 @@ func confidenceFor(target, hint string, hops []string, info geoInfo) float64 {
 	if hint == "" {
 		return 0
 	}
-	base := 0.65
+	base := baseRouteConfidence
 	for i := len(hops) - 1; i >= 0; i-- {
-		if hops[i] == hint && i >= len(hops)-3 {
-			base = 0.85
+		if hops[i] == hint && i >= len(hops)-nearTargetHopWindow {
+			base = nearTargetConfidence
 			break
 		}
 	}
-	if strings.Contains(strings.ToLower(info.ISP+" "+info.AS), "cloudflare") {
-		base += 0.1
+	if isCloudflareInfo(info) {
+		base += cloudflareBonus
 	}
 	if hint == target {
-		base -= 0.2
+		base -= targetHintPenalty
 	}
-	if base > 0.98 {
-		return 0.98
+	if base > maxRouteConfidence {
+		return maxRouteConfidence
 	}
 	if base < 0 {
 		return 0

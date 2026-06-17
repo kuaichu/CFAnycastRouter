@@ -81,6 +81,41 @@ func TestGeoInfoCacheExpiresAndEvicts(t *testing.T) {
 	}
 }
 
+func TestRouteHintSelectorPrefersCloudflareOverNearerTransit(t *testing.T) {
+	hops := []string{"10.0.0.1", "203.0.113.9", "198.51.100.7", "104.20.16.188"}
+	infos := map[string]geoInfo{
+		"203.0.113.9": {
+			Query:       "203.0.113.9",
+			CountryCode: "HK",
+			ISP:         "Cloudflare, Inc.",
+			AS:          "AS13335 Cloudflare, Inc.",
+		},
+		"198.51.100.7": {
+			Query:       "198.51.100.7",
+			CountryCode: "US",
+			ISP:         "Transit Provider",
+			AS:          "AS64500 Transit Provider",
+		},
+	}
+	pick := routeHintSelector{}.Pick("104.20.16.188", hops, infos)
+	if pick == nil || pick.Query != "203.0.113.9" {
+		t.Fatalf("selector picked %#v, want Cloudflare hop", pick)
+	}
+}
+
+func TestGeoInfoFromTraceLineUsesRuleTables(t *testing.T) {
+	info, ok := geoInfoFromTraceLine("11 103.22.203.231 AS13335 中国 香港 Cloudflare")
+	if !ok {
+		t.Fatal("expected trace line to parse")
+	}
+	if got := regionFromGeo(info); got != "HK" {
+		t.Fatalf("region=%s want HK: %#v", got, info)
+	}
+	if !isCloudflareInfo(info) {
+		t.Fatalf("expected Cloudflare network info: %#v", info)
+	}
+}
+
 func TestParseNTRRawHopsSortsByHop(t *testing.T) {
 	raw := `14|129.250.3.187||115.94||||||||
 9|219.158.3.174||30.68||||||||
