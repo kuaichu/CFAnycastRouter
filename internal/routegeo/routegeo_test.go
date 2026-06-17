@@ -2,6 +2,8 @@ package routegeo
 
 import (
 	"context"
+	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -78,6 +80,61 @@ func TestGeoInfoCacheExpiresAndEvicts(t *testing.T) {
 	}, now)
 	if len(cache.items) > 1 {
 		t.Fatalf("cache size=%d want <=1", len(cache.items))
+	}
+}
+
+func TestTraceCommandPlannerPrefersNextTrace(t *testing.T) {
+	planner := traceCommandPlanner{
+		goos: "linux",
+		lookPath: func(name string) (string, error) {
+			if name == "nexttrace" {
+				return "/usr/bin/nexttrace", nil
+			}
+			return "", errors.New("not found")
+		},
+	}
+	plan := planner.Plan("104.20.16.188", TraceOptions{})
+	if plan.Path != "/usr/bin/nexttrace" {
+		t.Fatalf("path=%s want nexttrace", plan.Path)
+	}
+	want := []string{"--raw", "-C", "-g", "cn", "--report", "--wide", "--show-ips", "-q", "3", "-n", "-m", "18", "104.20.16.188"}
+	if !reflect.DeepEqual(plan.Args, want) {
+		t.Fatalf("args=%#v want %#v", plan.Args, want)
+	}
+}
+
+func TestTraceCommandPlannerFallsBackToTraceroute(t *testing.T) {
+	planner := traceCommandPlanner{
+		goos: "linux",
+		lookPath: func(name string) (string, error) {
+			if name == "traceroute" {
+				return "/usr/sbin/traceroute", nil
+			}
+			return "", errors.New("not found")
+		},
+	}
+	plan := planner.Plan("104.20.16.188", TraceOptions{})
+	if plan.Path != "/usr/sbin/traceroute" {
+		t.Fatalf("path=%s want traceroute", plan.Path)
+	}
+	want := []string{"-n", "-m", "18", "-w", "1", "-q", "1", "104.20.16.188"}
+	if !reflect.DeepEqual(plan.Args, want) {
+		t.Fatalf("args=%#v want %#v", plan.Args, want)
+	}
+}
+
+func TestTraceCommandPlannerUsesCustomCommand(t *testing.T) {
+	planner := traceCommandPlanner{goos: "linux"}
+	plan := planner.Plan("104.20.16.188", TraceOptions{
+		Command: "/opt/bin/trace",
+		Args:    []string{"--ip={ip}", "--wide"},
+	})
+	if plan.Path != "/opt/bin/trace" {
+		t.Fatalf("path=%s want custom command", plan.Path)
+	}
+	want := []string{"--ip=104.20.16.188", "--wide"}
+	if !reflect.DeepEqual(plan.Args, want) {
+		t.Fatalf("args=%#v want %#v", plan.Args, want)
 	}
 }
 
@@ -254,8 +311,8 @@ func TestNextTraceReportUsesPreviousCloudflareHopWhenTargetGeoIsUS(t *testing.T)
 	}
 }
 
-func TestNTRReportArgsFromRaw(t *testing.T) {
-	got, ok := ntrReportArgs([]string{"-4", "--raw", "--icmp-mode", "2", "-d", "disable-geoip", "-q", "1", "{ip}"})
+func TestNextTraceReportArgsFromRaw(t *testing.T) {
+	got, ok := nextTraceReportArgs([]string{"-4", "--raw", "--icmp-mode", "2", "-d", "disable-geoip", "-q", "1", "{ip}"})
 	if !ok {
 		t.Fatal("expected raw args to be convertible")
 	}

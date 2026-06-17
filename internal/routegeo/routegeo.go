@@ -114,6 +114,16 @@ type traceNetworkRule struct {
 	any []string
 }
 
+type traceCommandPlan struct {
+	Path string
+	Args []string
+}
+
+type traceCommandPlanner struct {
+	goos     string
+	lookPath func(string) (string, error)
+}
+
 var traceRegionRules = []traceRegionRule{
 	{country: "Hong Kong", countryCode: "HK", city: "Hong Kong", terms: []string{"hong kong", "香港", "newthk", ".hk.", "-hk", "_hk", "hkg"}},
 	{country: "Singapore", countryCode: "SG", city: "Singapore", terms: []string{"singapore", "新加坡"}},
@@ -212,7 +222,7 @@ type embeddedGeoTrace struct {
 }
 
 func (r *routeResolver) traceEmbeddedGeoFallback(ip string, timeout time.Duration, opts TraceOptions) *embeddedGeoTrace {
-	args, ok := ntrReportArgs(opts.Args)
+	args, ok := nextTraceReportArgs(opts.Args)
 	if !ok || strings.TrimSpace(opts.Command) == "" {
 		return nil
 	}
@@ -235,7 +245,8 @@ func (r *routeResolver) runTrace(ip string, timeout time.Duration, opts TraceOpt
 }
 
 func (execTraceRunner) Run(ctx context.Context, ip string, opts TraceOptions) (string, error) {
-	cmd := traceCommand(ctx, ip, opts)
+	plan := defaultTraceCommandPlanner().Plan(ip, opts)
+	cmd := exec.CommandContext(ctx, plan.Path, plan.Args...)
 	data, err := cmd.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {
 		return string(data), fmt.Errorf("route trace timed out")
@@ -246,29 +257,39 @@ func (execTraceRunner) Run(ctx context.Context, ip string, opts TraceOptions) (s
 	return string(data), nil
 }
 
-func traceCommand(ctx context.Context, ip string, opts TraceOptions) *exec.Cmd {
+func defaultTraceCommandPlanner() traceCommandPlanner {
+	return traceCommandPlanner{goos: runtime.GOOS, lookPath: exec.LookPath}
+}
+
+func (p traceCommandPlanner) Plan(ip string, opts TraceOptions) traceCommandPlan {
+	if p.goos == "" {
+		p.goos = runtime.GOOS
+	}
+	if p.lookPath == nil {
+		p.lookPath = exec.LookPath
+	}
 	if strings.TrimSpace(opts.Command) != "" {
 		args := replaceIPArg(opts.Args, ip)
 		if len(args) == 0 {
 			args = []string{ip}
 		}
-		return exec.CommandContext(ctx, opts.Command, args...)
+		return traceCommandPlan{Path: opts.Command, Args: args}
 	}
 	for _, name := range []string{"nexttrace", "nxtrace", "/usr/local/bin/nexttrace", "/usr/local/bin/nxtrace", "/usr/bin/nexttrace", "/usr/bin/nxtrace"} {
-		if path, err := exec.LookPath(name); err == nil {
-			return exec.CommandContext(ctx, path, "--raw", "-C", "-g", "cn", "--report", "--wide", "--show-ips", "-q", "3", "-n", "-m", "18", ip)
+		if path, err := p.lookPath(name); err == nil {
+			return traceCommandPlan{Path: path, Args: []string{"--raw", "-C", "-g", "cn", "--report", "--wide", "--show-ips", "-q", "3", "-n", "-m", "18", ip}}
 		}
 	}
-	if _, err := exec.LookPath("mtr"); err == nil && runtime.GOOS != "windows" {
-		return exec.CommandContext(ctx, "mtr", "-n", "-r", "-c", "1", "-m", "18", ip)
+	if path, err := p.lookPath("mtr"); err == nil && p.goos != "windows" {
+		return traceCommandPlan{Path: path, Args: []string{"-n", "-r", "-c", "1", "-m", "18", ip}}
 	}
-	if runtime.GOOS != "windows" {
-		if _, err := exec.LookPath("traceroute"); err == nil {
-			return exec.CommandContext(ctx, "traceroute", "-n", "-m", "18", "-w", "1", "-q", "1", ip)
+	if p.goos != "windows" {
+		if path, err := p.lookPath("traceroute"); err == nil {
+			return traceCommandPlan{Path: path, Args: []string{"-n", "-m", "18", "-w", "1", "-q", "1", ip}}
 		}
-		return exec.CommandContext(ctx, "tracepath", "-n", "-m", "18", ip)
+		return traceCommandPlan{Path: "tracepath", Args: []string{"-n", "-m", "18", ip}}
 	}
-	return exec.CommandContext(ctx, "tracert", "-d", "-h", "18", "-w", "700", ip)
+	return traceCommandPlan{Path: "tracert", Args: []string{"-d", "-h", "18", "-w", "700", ip}}
 }
 
 func replaceIPArg(args []string, ip string) []string {
@@ -288,7 +309,7 @@ func replaceIPArg(args []string, ip string) []string {
 	return out
 }
 
-func ntrReportArgs(args []string) ([]string, bool) {
+func nextTraceReportArgs(args []string) ([]string, bool) {
 	hasRaw := false
 	hasReport := false
 	hasWide := false
