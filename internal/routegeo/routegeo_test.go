@@ -106,6 +106,43 @@ func TestNextTraceReportPrefersCloudflareUSHopAfterHKTransit(t *testing.T) {
 	}
 }
 
+func TestNextTraceReportUsesPreviousCloudflareHopWhenTargetGeoIsUS(t *testing.T) {
+	target := "104.20.16.188"
+	raw := `1   10.0.0.1        *                         RFC1918
+                                              0.41 ms / 0.56 ms / 0.41 ms
+2   101.64.132.1    AS4837                    中国 浙江省 宁波市 海曙 中国联通
+                                              5.07 ms / 9.90 ms / 9.69 ms
+3   221.12.35.249   AS4837                    中国 浙江省 宁波市  中国联通
+                                              7.08 ms / * ms / * ms
+4   *
+5   219.158.104.197 AS4837                    中国 山西省 太原市  中国联通/骨干网
+                                              26.15 ms / * ms / * ms
+6   *
+7   219.158.3.186   AS4837                    中国 北京市   中国联通
+                                              29.86 ms / * ms / * ms
+8   219.158.3.190   AS4837                    中国 北京市   中国联通
+                                              29.65 ms / * ms / * ms
+9   *
+10  *
+11  103.22.203.231  AS13335                   中国 香港   Cloudflare
+                                              113.19 ms / * ms / * ms
+12  104.20.16.188   AS13335                   美国    Cloudflare
+                                              112.46 ms / 112.52 ms / 112.16 ms`
+
+	hops := parseHops(raw)
+	infos := parseEmbeddedGeoInfos(raw)
+	pick := pickRouteHint(target, hops, infos)
+	if pick == nil {
+		t.Fatal("expected route hint from previous Cloudflare hop")
+	}
+	if pick.Query != "103.22.203.231" {
+		t.Fatalf("hint IP=%s want 103.22.203.231", pick.Query)
+	}
+	if got := regionFromGeo(*pick); got != "HK" {
+		t.Fatalf("route hint region=%s want HK; info=%#v", got, *pick)
+	}
+}
+
 func TestNTRReportArgsFromRaw(t *testing.T) {
 	got, ok := ntrReportArgs([]string{"-4", "--raw", "--icmp-mode", "2", "-d", "disable-geoip", "-q", "1", "{ip}"})
 	if !ok {
