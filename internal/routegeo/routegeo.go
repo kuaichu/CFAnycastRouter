@@ -34,6 +34,10 @@ type Result struct {
 type TraceOptions struct {
 	Command string
 	Args    []string
+
+	runner     traceRunner
+	geoQuerier geoQuerier
+	cache      *geoInfoCache
 }
 
 type geoInfo struct {
@@ -52,16 +56,65 @@ var ntrRawHopPattern = regexp.MustCompile(`^\s*(\d+)\|((?:\d{1,3}\.){3}\d{1,3})\
 var asnPattern = regexp.MustCompile(`\bAS\d+\b`)
 
 var geoLookupSem = make(chan struct{}, 2)
-var geoCache = struct {
+var defaultGeoCache = newGeoInfoCache(4096, 6*time.Hour)
+
+type traceRunner interface {
+	Run(ctx context.Context, ip string, opts TraceOptions) (string, error)
+}
+
+type geoQuerier interface {
+	Lookup(ctx context.Context, ips []string) ([]geoInfo, error)
+}
+
+type routeResolver struct {
+	runner traceRunner
+	geo    geoQuerier
+	cache  *geoInfoCache
+}
+
+type execTraceRunner struct{}
+
+type ipAPIGeoQuerier struct {
+	client *http.Client
+}
+
+type geoInfoCache struct {
 	sync.RWMutex
-	items map[string]geoInfo
-}{items: map[string]geoInfo{}}
+	items map[string]geoCacheEntry
+	ttl   time.Duration
+	max   int
+}
+
+type geoCacheEntry struct {
+	info      geoInfo
+	expiresAt time.Time
+}
 
 func Trace(ip string, timeout time.Duration) Result {
 	return TraceWithOptions(ip, timeout, TraceOptions{})
 }
 
 func TraceWithOptions(ip string, timeout time.Duration, opts TraceOptions) Result {
+	return newRouteResolver(opts).Trace(ip, timeout, opts)
+}
+
+func newRouteResolver(opts TraceOptions) *routeResolver {
+	runner := opts.runner
+	if runner == nil {
+		runner = execTraceRunner{}
+	}
+	querier := opts.geoQuerier
+	if querier == nil {
+		querier = ipAPIGeoQuerier{client: http.DefaultClient}
+	}
+	cache := opts.cache
+	if cache == nil {
+		cache = defaultGeoCache
+	}
+	return &routeResolver{runner: runner, geo: querier, cache: cache}
+}
+
+func (r *routeResolver) Trace(ip string, timeout time.Duration, opts TraceOptions) Result {
 	out := Result{IP: strings.TrimSpace(ip)}
 	if net.ParseIP(out.IP).To4() == nil {
 		out.Error = "invalid IPv4"
@@ -70,7 +123,7 @@ func TraceWithOptions(ip string, timeout time.Duration, opts TraceOptions) Resul
 	if timeout <= 0 {
 		timeout = 8 * time.Second
 	}
-	raw, err := runTrace(out.IP, timeout, opts)
+	raw, err := r.runTrace(out.IP, timeout, opts)
 	out.Raw = raw
 	if err != nil {
 		out.Error = err.Error()
@@ -83,12 +136,12 @@ func TraceWithOptions(ip string, timeout time.Duration, opts TraceOptions) Resul
 		return out
 	}
 	infos := parseEmbeddedGeoInfos(raw)
-	for ip, info := range lookupGeo(out.Hops, timeout, infos) {
+	for ip, info := range r.lookupGeo(out.Hops, timeout, infos) {
 		infos[ip] = info
 	}
 	pick := pickRouteHint(out.IP, out.Hops, infos)
 	if pick == nil || shouldTryEmbeddedFallback(*pick) {
-		if fallback := traceEmbeddedGeoFallback(out.IP, timeout, opts); fallback != nil {
+		if fallback := r.traceEmbeddedGeoFallback(out.IP, timeout, opts); fallback != nil {
 			fallbackPick := pickRouteHint(out.IP, fallback.hops, fallback.infos)
 			if shouldUseEmbeddedFallback(out.IP, out.Hops, pick, fallback.hops, fallbackPick) {
 				out.Hops = fallback.hops
@@ -118,12 +171,12 @@ type embeddedGeoTrace struct {
 	infos map[string]geoInfo
 }
 
-func traceEmbeddedGeoFallback(ip string, timeout time.Duration, opts TraceOptions) *embeddedGeoTrace {
+func (r *routeResolver) traceEmbeddedGeoFallback(ip string, timeout time.Duration, opts TraceOptions) *embeddedGeoTrace {
 	args, ok := ntrReportArgs(opts.Args)
 	if !ok || strings.TrimSpace(opts.Command) == "" {
 		return nil
 	}
-	raw, err := runTrace(ip, timeout, TraceOptions{Command: opts.Command, Args: args})
+	raw, err := r.runTrace(ip, timeout, TraceOptions{Command: opts.Command, Args: args})
 	if err != nil && raw == "" {
 		return nil
 	}
@@ -135,9 +188,13 @@ func traceEmbeddedGeoFallback(ip string, timeout time.Duration, opts TraceOption
 	return &embeddedGeoTrace{hops: hops, infos: infos}
 }
 
-func runTrace(ip string, timeout time.Duration, opts TraceOptions) (string, error) {
+func (r *routeResolver) runTrace(ip string, timeout time.Duration, opts TraceOptions) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	return r.runner.Run(ctx, ip, opts)
+}
+
+func (execTraceRunner) Run(ctx context.Context, ip string, opts TraceOptions) (string, error) {
 	cmd := traceCommand(ctx, ip, opts)
 	data, err := cmd.CombinedOutput()
 	if ctx.Err() == context.DeadlineExceeded {
@@ -316,10 +373,11 @@ func parseNTRRawHops(raw string) []string {
 	return out
 }
 
-func lookupGeo(ips []string, timeout time.Duration, known map[string]geoInfo) map[string]geoInfo {
+func (r *routeResolver) lookupGeo(ips []string, timeout time.Duration, known map[string]geoInfo) map[string]geoInfo {
 	out := map[string]geoInfo{}
 	var missing []string
 	seen := map[string]bool{}
+	now := time.Now()
 	for _, ip := range ips {
 		if !isPublicIPv4(ip) || seen[ip] {
 			continue
@@ -329,10 +387,7 @@ func lookupGeo(ips []string, timeout time.Duration, known map[string]geoInfo) ma
 			out[ip] = info
 			continue
 		}
-		geoCache.RLock()
-		info, ok := geoCache.items[ip]
-		geoCache.RUnlock()
-		if ok {
+		if info, ok := r.cache.Get(ip, now); ok {
 			out[ip] = info
 			continue
 		}
@@ -343,18 +398,10 @@ func lookupGeo(ips []string, timeout time.Duration, known map[string]geoInfo) ma
 	}
 	geoLookupSem <- struct{}{}
 	defer func() { <-geoLookupSem }()
-	body, _ := json.Marshal(missing)
-	client := &http.Client{Timeout: timeout}
-	resp, err := client.Post("http://ip-api.com/batch?fields=status,query,country,countryCode,regionName,city,isp,as", "application/json", bytes.NewReader(body))
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	infos, err := r.geo.Lookup(ctx, missing)
 	if err != nil {
-		return out
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return out
-	}
-	var infos []geoInfo
-	if err := json.NewDecoder(resp.Body).Decode(&infos); err != nil {
 		return out
 	}
 	cacheUpdates := map[string]geoInfo{}
@@ -364,14 +411,94 @@ func lookupGeo(ips []string, timeout time.Duration, known map[string]geoInfo) ma
 			cacheUpdates[info.Query] = info
 		}
 	}
-	if len(cacheUpdates) > 0 {
-		geoCache.Lock()
-		for ip, info := range cacheUpdates {
-			geoCache.items[ip] = info
-		}
-		geoCache.Unlock()
-	}
+	r.cache.SetMany(cacheUpdates, now)
 	return out
+}
+
+func (q ipAPIGeoQuerier) Lookup(ctx context.Context, ips []string) ([]geoInfo, error) {
+	body, err := json.Marshal(ips)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://ip-api.com/batch?fields=status,query,country,countryCode,regionName,city,isp,as", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := q.client
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("geo lookup status %d", resp.StatusCode)
+	}
+	var infos []geoInfo
+	if err := json.NewDecoder(resp.Body).Decode(&infos); err != nil {
+		return nil, err
+	}
+	return infos, nil
+}
+
+func newGeoInfoCache(max int, ttl time.Duration) *geoInfoCache {
+	if max <= 0 {
+		max = 4096
+	}
+	if ttl <= 0 {
+		ttl = 6 * time.Hour
+	}
+	return &geoInfoCache{items: map[string]geoCacheEntry{}, max: max, ttl: ttl}
+}
+
+func (c *geoInfoCache) Get(ip string, now time.Time) (geoInfo, bool) {
+	if c == nil {
+		return geoInfo{}, false
+	}
+	c.RLock()
+	entry, ok := c.items[ip]
+	c.RUnlock()
+	if !ok {
+		return geoInfo{}, false
+	}
+	if now.After(entry.expiresAt) {
+		c.Lock()
+		if current, exists := c.items[ip]; exists && now.After(current.expiresAt) {
+			delete(c.items, ip)
+		}
+		c.Unlock()
+		return geoInfo{}, false
+	}
+	return entry.info, true
+}
+
+func (c *geoInfoCache) SetMany(infos map[string]geoInfo, now time.Time) {
+	if c == nil || len(infos) == 0 {
+		return
+	}
+	c.Lock()
+	defer c.Unlock()
+	for ip, info := range infos {
+		c.items[ip] = geoCacheEntry{info: info, expiresAt: now.Add(c.ttl)}
+	}
+	c.evict(now)
+}
+
+func (c *geoInfoCache) evict(now time.Time) {
+	for ip, entry := range c.items {
+		if now.After(entry.expiresAt) {
+			delete(c.items, ip)
+		}
+	}
+	for len(c.items) > c.max {
+		for ip := range c.items {
+			delete(c.items, ip)
+			break
+		}
+	}
 }
 
 func parseEmbeddedGeoInfos(raw string) map[string]geoInfo {

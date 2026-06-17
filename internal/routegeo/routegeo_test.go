@@ -1,9 +1,85 @@
 package routegeo
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 )
+
+type fakeTraceRunner struct {
+	raw   string
+	err   error
+	calls int
+}
+
+func (f *fakeTraceRunner) Run(ctx context.Context, ip string, opts TraceOptions) (string, error) {
+	f.calls++
+	return f.raw, f.err
+}
+
+type fakeGeoQuerier map[string]geoInfo
+
+func (f fakeGeoQuerier) Lookup(ctx context.Context, ips []string) ([]geoInfo, error) {
+	out := make([]geoInfo, 0, len(ips))
+	for _, ip := range ips {
+		if info, ok := f[ip]; ok {
+			out = append(out, info)
+		}
+	}
+	return out, nil
+}
+
+func TestTraceWithInjectedRunnerAndGeoQuerier(t *testing.T) {
+	runner := &fakeTraceRunner{raw: `1 10.0.0.1
+2 203.0.113.9
+3 104.20.16.188`}
+	result := TraceWithOptions("104.20.16.188", time.Second, TraceOptions{
+		runner: runner,
+		geoQuerier: fakeGeoQuerier{
+			"203.0.113.9": {
+				Status:      "success",
+				Query:       "203.0.113.9",
+				Country:     "Hong Kong",
+				CountryCode: "HK",
+				City:        "Hong Kong",
+				ISP:         "Cloudflare, Inc.",
+				AS:          "AS13335 Cloudflare, Inc.",
+			},
+		},
+		cache: newGeoInfoCache(8, time.Hour),
+	})
+	if runner.calls != 1 {
+		t.Fatalf("runner calls=%d want 1", runner.calls)
+	}
+	if result.Error != "" {
+		t.Fatalf("unexpected trace error: %s", result.Error)
+	}
+	if result.HintIP != "203.0.113.9" || result.Region != "HK" {
+		t.Fatalf("trace result hint=%s region=%s want 203.0.113.9/HK: %#v", result.HintIP, result.Region, result)
+	}
+}
+
+func TestGeoInfoCacheExpiresAndEvicts(t *testing.T) {
+	cache := newGeoInfoCache(1, time.Minute)
+	now := time.Unix(1000, 0)
+	cache.SetMany(map[string]geoInfo{
+		"203.0.113.1": {Query: "203.0.113.1", CountryCode: "HK"},
+	}, now)
+	if _, ok := cache.Get("203.0.113.1", now.Add(30*time.Second)); !ok {
+		t.Fatal("expected cache hit before ttl")
+	}
+	if _, ok := cache.Get("203.0.113.1", now.Add(2*time.Minute)); ok {
+		t.Fatal("expected cache miss after ttl")
+	}
+	cache.SetMany(map[string]geoInfo{
+		"203.0.113.2": {Query: "203.0.113.2", CountryCode: "HK"},
+		"203.0.113.3": {Query: "203.0.113.3", CountryCode: "US"},
+	}, now)
+	if len(cache.items) > 1 {
+		t.Fatalf("cache size=%d want <=1", len(cache.items))
+	}
+}
 
 func TestParseNTRRawHopsSortsByHop(t *testing.T) {
 	raw := `14|129.250.3.187||115.94||||||||
