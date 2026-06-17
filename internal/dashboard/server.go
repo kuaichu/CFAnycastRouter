@@ -46,6 +46,7 @@ type Server struct {
 	onControl     ControlFunc
 	agentTokenEnv string
 	agents        *agentRegistry
+	history       *resultHistoryStore
 	mu            sync.RWMutex
 	dnsMu         sync.Mutex
 	last          *router.CycleResult
@@ -55,10 +56,13 @@ type Server struct {
 
 func New(port int, statePath, cfgPath string, onScan ScanFunc, onSeeds SeedsFunc, onLookup LookupFunc, onSettings SettingsFunc, onControl ControlFunc) *Server {
 	agentStatePath := ""
+	resultHistoryPath := ""
 	if strings.TrimSpace(statePath) != "" {
-		agentStatePath = filepath.Join(filepath.Dir(statePath), "agents.json")
+		stateDir := filepath.Dir(statePath)
+		agentStatePath = filepath.Join(stateDir, "agents.json")
+		resultHistoryPath = filepath.Join(stateDir, "result-history.json")
 	}
-	return &Server{port: port, statePath: statePath, cfgPath: cfgPath, onScan: onScan, onSeeds: onSeeds, onLookup: onLookup, onSettings: onSettings, onControl: onControl, agents: newAgentRegistry(agentStatePath)}
+	return &Server{port: port, statePath: statePath, cfgPath: cfgPath, onScan: onScan, onSeeds: onSeeds, onLookup: onLookup, onSettings: onSettings, onControl: onControl, agents: newAgentRegistry(agentStatePath), history: newResultHistoryStore(resultHistoryPath)}
 }
 
 func (s *Server) SetAgentTokenEnv(name string) {
@@ -144,9 +148,11 @@ func (s *Server) Start() {
 	mux.HandleFunc("/api/control", s.handleControl)
 	mux.HandleFunc("/api/shutdown", s.handleShutdown)
 	mux.HandleFunc("/api/agents", s.handleAgents)
+	mux.HandleFunc("/api/result-history", s.handleResultHistory)
 	mux.HandleFunc("/api/agent/config", s.handleAgentConfig)
 	mux.HandleFunc("/api/agent/report", s.handleAgentReport)
 	s.server = &http.Server{Addr: fmt.Sprintf(":%d", s.port), Handler: mux}
+	go s.refreshAgentDNS()
 	go func() {
 		log.Printf("[dashboard] http://0.0.0.0:%d", s.port)
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -651,12 +657,13 @@ button{border-radius:5px;background:#111d27;border-color:#304150;padding:7px 12p
 .dashboard-section{margin-bottom:14px;padding:18px}.section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}.section-title-wrap{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}.section-title-wrap .section-copy{margin:0}.final-carriers{justify-content:flex-end}.segments{gap:0}.seg{border-radius:0;padding:7px 14px}.seg:first-child{border-radius:5px 0 0 5px}.seg:last-child{border-radius:0 5px 5px 0}.seg+.seg{margin-left:-1px}.seg.active{background:linear-gradient(90deg,#14946c,#2acb97);color:white;border-color:#2acb97}
 .notice{display:none;align-items:center;gap:9px;color:var(--warn);font-size:12px;margin:14px 0 2px}.notice.show{display:flex}.notice button{border:0;background:transparent;color:var(--ok);padding:0}.notice.info{color:#9fb0bd}.notice-icon{width:16px;height:16px;border:1px solid currentColor;border-radius:50%;display:grid;place-items:center;font-size:10px;flex:0 0 auto}
 .final-results-wrap,.data-table-wrap{overflow:auto}.final-table,.data-table{background:transparent;border:0;margin-top:12px;table-layout:auto}.final-table th,.final-table td,.data-table th,.data-table td{border-bottom:1px solid rgba(49,65,79,.8);padding:12px 10px}.final-table tr.recommended,.data-table tr.best{background:linear-gradient(90deg,rgba(20,148,108,.12),rgba(20,148,108,.02));box-shadow:inset 2px 0 var(--ok)}.result-badge{display:inline-block;border:1px solid #176d52;background:#0c3027;color:var(--ok);border-radius:4px;padding:2px 6px;font-size:10px;margin-left:7px}.status-good{color:var(--ok)}.status-muted{color:var(--muted)}
+.history-section{padding-bottom:16px}.history-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.history-layout{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:16px;margin-top:14px;align-items:stretch}.history-chart-wrap{position:relative;min-height:260px;border:1px solid rgba(49,65,79,.72);border-radius:8px;background:linear-gradient(180deg,rgba(8,19,28,.7),rgba(8,16,23,.5));overflow:hidden}.history-chart-wrap canvas{width:100%;height:260px;display:block}.history-empty{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:var(--muted);font-size:13px}.history-empty.show{display:flex}.history-side{border:1px solid rgba(49,65,79,.72);border-radius:8px;padding:12px;background:rgba(8,19,28,.44);display:flex;flex-direction:column;gap:13px}.metric-tabs{display:grid;grid-template-columns:1fr;gap:7px}.metric-tabs button{text-align:left}.metric-tabs button.active{border-color:#2acb97;color:white;background:#123325}.history-legend{display:grid;gap:8px}.legend-item{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#c8d7df;font-size:12px}.legend-label{display:inline-flex;align-items:center;gap:8px;min-width:0}.legend-dot{width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 3px rgba(255,255,255,.04)}.legend-value{font-variant-numeric:tabular-nums;color:var(--text)}.history-summary{font-size:12px;color:var(--muted);line-height:1.7;border-top:1px solid rgba(49,65,79,.62);padding-top:10px}
 .agent-section-head{display:flex;align-items:center;justify-content:space-between;gap:14px}.agent-summary-line{color:var(--muted);font-size:12px}.agent-table td:first-child{font-weight:650}.agent-name-sub{display:block;font-size:10px;color:var(--muted);font-weight:400;margin-top:2px}.agent-status-stack{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.status-pill{display:inline-flex;align-items:center;gap:6px;border:1px solid #1f6c53;border-radius:4px;background:#0c3027;color:#c9fbed;padding:3px 8px;font-size:11px}.status-pill.offline{border-color:#683238;background:#271417;color:#ff989e}.status-pill.running{border-color:#20644f;background:#0c3027;color:#bff8e5}.status-pill.paused{border-color:#7c6830;background:#2a2413;color:#ffd976}.status-pill.pending{border-color:#31536d;background:#112a3c;color:#8fc8ef}.status-pill .status-dot{margin:0;width:6px;height:6px}
 .data-section{padding:18px}.data-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}.data-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}.search-box{position:relative}.search-box:before{content:"⌕";position:absolute;left:11px;top:5px;color:var(--muted);font-size:20px}.search-box input{width:250px;background:#0a151e;border:1px solid #304150;border-radius:5px;color:var(--text);padding:8px 10px 8px 34px;box-sizing:border-box}.toolbar-select{background:#0a151e;border:1px solid #304150;border-radius:5px;color:var(--text);padding:8px 10px}.column-picker{position:relative}.column-menu{display:none;position:absolute;right:0;top:calc(100% + 8px);z-index:6;width:290px;background:#13212c;border:1px solid #3a5060;border-radius:7px;padding:15px;box-shadow:0 18px 50px rgba(0,0,0,.45)}.column-menu.open{display:block}.column-menu-title{font-weight:700;margin-bottom:12px}.column-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px 14px}.column-grid label{display:flex;align-items:center;gap:7px;color:#cbd6dd;font-size:12px}.column-grid label.column-hidden{color:#748693}.column-grid .hidden-tag{margin-left:auto;border:1px solid #354758;border-radius:999px;padding:1px 5px;color:#8fa0ae;font-size:10px}.column-grid input{accent-color:var(--ok)}.column-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.selection-notice{margin:12px 0 0;padding:9px 11px;border:1px solid #2d3d4a;background:#0a151e;border-radius:5px}
 .data-table{min-width:1080px}.data-table th{white-space:nowrap}.data-table td{font-size:12px;vertical-align:middle}.data-table td[data-col="ip"]{font:12px ui-monospace,SFMono-Regular,Consolas,monospace}.data-table td[data-col="hint"]{max-width:250px;white-space:normal}.data-table td[data-col="speed"]{color:#d9e4ea}.data-table td[data-col="agent"]{white-space:normal}.data-table [hidden]{display:none!important}
 .table-footer{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:14px;color:var(--muted);font-size:12px}.pagination{display:flex;align-items:center;gap:6px}.page-btn{min-width:30px;padding:6px 8px}.page-btn.active{background:#15946d;border-color:#26c796;color:white}.page-ellipsis{padding:0 3px}.refresh-live{display:inline-flex;align-items:center;gap:7px;color:#aebac3}.refresh-live .live-dot{width:6px;height:6px}.refresh-live.paused{color:var(--warn)}
 .modal-card{background:#101d27;border-color:#315064}.settings-card{background:#0d1821}
-@media(max-width:900px){main{padding:0 14px 22px}.app-header{height:auto;padding:14px 0;align-items:flex-start}.header-actions{max-width:58%}.overview{grid-template-columns:1fr 1fr}.overview-item:nth-child(3):before{display:none}.overview-item:nth-child(n+3){border-top:1px solid var(--line)}.workbench{grid-template-columns:1fr}.section-head,.agent-section-head{align-items:stretch;flex-direction:column}.final-carriers{justify-content:flex-start}.search-box input{width:210px}.settings-layout,.form-grid,.form-grid.compact,.agent-editor-grid{grid-template-columns:1fr}.tabs{position:static;display:flex;overflow:auto}}
+@media(max-width:900px){main{padding:0 14px 22px}.app-header{height:auto;padding:14px 0;align-items:flex-start}.header-actions{max-width:58%}.overview{grid-template-columns:1fr 1fr}.overview-item:nth-child(3):before{display:none}.overview-item:nth-child(n+3){border-top:1px solid var(--line)}.workbench{grid-template-columns:1fr}.section-head,.agent-section-head{align-items:stretch;flex-direction:column}.history-layout{grid-template-columns:1fr}.history-controls{justify-content:flex-start}.metric-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}.metric-tabs button{text-align:center}.final-carriers{justify-content:flex-start}.search-box input{width:210px}.settings-layout,.form-grid,.form-grid.compact,.agent-editor-grid{grid-template-columns:1fr}.tabs{position:static;display:flex;overflow:auto}}
 @media(max-width:620px){.brand-sub,.last-update{display:none}.header-actions{max-width:none}.app-header{flex-direction:column}.overview{grid-template-columns:1fr}.overview-item+.overview-item:before{top:0;right:18px;bottom:auto;width:auto;height:1px}.overview-item:nth-child(n+3){border-top:0}.scan-steps{align-items:flex-start}.step-line{min-width:18px;margin:13px 7px 0}.data-controls{justify-content:flex-start;width:100%}.search-box,.search-box input{width:100%}.table-footer{align-items:flex-start;flex-direction:column}.modal{padding:10px}.modal-card{width:calc(100vw - 20px);max-height:calc(100vh - 20px);padding:16px}.record-row{grid-template-columns:1fr 1fr}.agent-manage-head,.agent-editor-foot{align-items:stretch;flex-direction:column}.agent-editor-actions{justify-content:flex-start}}
 </style>
 </head>
@@ -808,6 +815,13 @@ button{border-radius:5px;background:#111d27;border-color:#304150;padding:7px 12p
 <div id="finalNotice" class="notice"><span class="notice-icon">!</span><span id="finalNoticeText"></span><button onclick="refreshNow()">重试</button></div>
 <div class="final-results-wrap"><table class="final-table"><thead><tr><th>地区</th><th>推荐 IP</th><th>解析域名</th><th>Ping</th><th>测速 IP</th><th>Mbps</th><th>Agent</th><th>状态</th></tr></thead><tbody id="carrierFinalRows"><tr><td colspan="8">等待 Agent 扫描数据</td></tr></tbody></table></div>
 </section>
+<section class="panel dashboard-section history-section">
+<div class="section-head"><div class="section-title-wrap"><h2 class="section-heading">优选趋势</h2><div id="historyCopy" class="section-copy">等待优选历史数据</div></div><div id="historyRangeTabs" class="segments history-controls"><button class="seg" data-range="1h">1H</button><button class="seg" data-range="24h">24H</button><button class="seg" data-range="7d">7D</button><button class="seg" data-range="30d">30D</button></div></div>
+<div class="history-layout">
+<div class="history-chart-wrap"><canvas id="resultHistoryCanvas"></canvas><div id="historyEmpty" class="history-empty">暂无可绘制的优选历史</div></div>
+<aside class="history-side"><div id="historyMetricTabs" class="metric-tabs"><button data-metric="ping">推荐 Ping</button><button data-metric="speed">测速耗时</button><button data-metric="mbps">下载 Mbps</button></div><div id="historyLegend" class="history-legend"></div><div id="historySummary" class="history-summary">等待 Agent 完成本轮测量</div></aside>
+</div>
+</section>
 <section class="panel dashboard-section">
 <div class="agent-section-head"><div class="section-title-wrap"><h2 class="section-heading">探针上报</h2><div class="section-copy">Agent 状态与最近一次测量摘要</div></div><div id="agentSummaryLine" class="agent-summary-line">等待 Agent 上报</div></div>
 <div class="final-results-wrap"><table class="final-table agent-table"><thead><tr><th>Agent</th><th>探测源</th><th>运营商</th><th>状态</th><th>最后上报</th><th>候选</th><th>最优 IP</th><th>地区</th><th>得分</th></tr></thead><tbody id="agentRows"><tr><td colspan="9">等待 Agent 上报</td></tr></tbody></table></div>
@@ -852,6 +866,9 @@ let seedDirty=false;
 let dataQuery='';
 let dataPage=1;
 let dataPageSize=50;
+let historyRange='24h';
+let historyMetric='ping';
+let historyCache={points:[]};
 const columnLabels={ip:'IP',stage:'阶段',segment:'网段',region:'判定地区',hint:'判断依据',speed:'CF 官方测速',mbps:'估算 Mbps',colo:'CF Colo',ping:'Ping 延迟',pingloss:'Ping 丢包',rtt:'TLS 延迟',jitter:'抖动',loss:'TLS 丢包',spike:'尖刺',score:'得分',agent:'Agent'};
 const defaultColumns=['ip','stage','segment','region','hint','speed','ping','rtt','jitter','score','agent'];
 let visibleColumns=new Set(defaultColumns);
@@ -872,6 +889,8 @@ function saveDashboardState(){
      settings_tab:activeSettingsTab,
      query:dataQuery,
      page_size:dataPageSize,
+     history_range:historyRange,
+     history_metric:historyMetric,
      columns:[...visibleColumns]
    }));
  }catch(_){}
@@ -885,6 +904,8 @@ function restoreDashboardState(){
  }
  if(typeof state.query==='string'){ dataQuery=state.query.slice(0,120); }
  if([25,50,100].includes(Number(state.page_size))){ dataPageSize=Number(state.page_size); }
+ if(['1h','24h','7d','30d'].includes(state.history_range)){ historyRange=state.history_range; }
+ if(['ping','speed','mbps'].includes(state.history_metric)){ historyMetric=state.history_metric; }
  if(Array.isArray(state.columns)){
    const columns=state.columns.filter(column=>columnLabels[column]);
    if(columns.length){ visibleColumns=new Set(columns); }
@@ -897,6 +918,7 @@ function restoreDashboardState(){
  applyVisibleColumns();
  switchSettingsTab(activeSettingsTab,false);
  updateSortHeaders();
+ updateHistoryControls();
 }
 function stageLabel(v){
  const map={
@@ -1101,14 +1123,14 @@ function domainForRegion(settings,carrier,region){
  const dns=settings?.cloudflare_dns||{};
  const records=(dns.record_sets&&dns.record_sets.length)?dns.record_sets:Object.entries(dns.records||{}).map(([r,domain])=>({enabled:true,carrier,region:r,type:'A',domain}));
  const rec=records.find(r=>r.enabled!==false&&String(r.carrier||settings?.carrier||'unknown').toLowerCase()===carrier&&String(r.type||'A').toUpperCase()==='A'&&String(r.region||'').toUpperCase()===region);
- return rec?.domain||'-';
+ if(rec?.domain){ return rec.domain; }
+ const base=String(dns.zone_name||'').trim().replace(/^\.+|\.+$/g,'');
+ if(!base||!carrier||carrier==='unknown'||!region){ return '-'; }
+ return carrier+'-cf-'+String(region).toLowerCase()+'.'+base;
 }
 function finalRegions(settings,candidates,field,carrier){
- const set=new Set(['HK','US','JP','SG']);
- const dns=settings?.cloudflare_dns||{};
- const records=(dns.record_sets&&dns.record_sets.length)?dns.record_sets:[];
- records.forEach(r=>{ if(String(r.carrier||settings?.carrier||'unknown').toLowerCase()===carrier&&r.region){ set.add(String(r.region).toUpperCase()); } });
- (candidates||[]).forEach(c=>{ const v=field==='route_region'?candidateRegion(c):knownRegion(c[field]); if(v&&v!=='unknown'){ set.add(v); } });
+ const set=new Set();
+ (candidates||[]).forEach(c=>{ if(!isSelectableCandidate(c)){ return; } const v=field==='route_region'?candidateRegion(c):knownRegion(c[field]); if(v&&v!=='unknown'){ set.add(v); } });
  return [...set].sort((a,b)=>{
    const order={HK:1,US:2,JP:3,SG:4,EU:5};
    return (order[a]||99)-(order[b]||99)||a.localeCompare(b);
@@ -1156,6 +1178,7 @@ function selectFinalCarrier(carrier){
  renderScanStatus(agentsCache);
  renderCarrierFinal(agentsCache);
  renderCarrierData(agentsCache);
+ refreshResultHistory();
 }
 function carrierCandidates(list,carrier,onlineOnly){
  const candidates=[];
@@ -1191,7 +1214,206 @@ function renderCarrierFinal(list){
    const speedMbps=speedOK?fmt(speed.cf_speed_mbps||0):(speed?.cf_speed_tested?'失败':'-');
    const status=recommended?(speed&& !speedOK?'测速失败':'推荐'):'待测';
    return '<tr class="'+(recommended?'recommended':'')+'"><td>'+region+(recommended?'<span class="result-badge">推荐</span>':'')+'</td><td>'+escapeHTML(route?.ip||'暂无可用结果')+'</td><td>'+escapeHTML(domainForRegion(settingsCache,selectedFinalCarrier,region))+'</td><td>'+(route?fmt(route.ping_rtt_ms||route.avg_rtt_ms||0)+' ms':'-')+'</td><td>'+escapeHTML(speedIP)+'</td><td>'+speedMbps+'</td><td>'+escapeHTML(source)+'</td><td class="'+(recommended&&(!speed||speedOK)?'status-good':'status-muted')+'">'+status+'</td></tr>';
- }).join('')||'<tr><td colspan="8">'+finalCarrierLabel(selectedFinalCarrier)+'暂无在线 Agent 数据</td></tr>';
+ }).join('')||'<tr><td colspan="8">'+finalCarrierLabel(selectedFinalCarrier)+'暂无可用地区；扫到健康候选后会自动生成解析域名</td></tr>';
+}
+function updateHistoryControls(){
+ document.querySelectorAll('#historyRangeTabs .seg').forEach(btn=>btn.classList.toggle('active',btn.dataset.range===historyRange));
+ document.querySelectorAll('#historyMetricTabs button').forEach(btn=>btn.classList.toggle('active',btn.dataset.metric===historyMetric));
+}
+function historyMetricMeta(){
+ const meta={
+   ping:{label:'推荐 Ping',unit:'ms',field:'ping_rtt_ms',better:'低延迟更好'},
+   speed:{label:'测速耗时',unit:'ms',field:'speed_rtt_ms',better:'低耗时更好'},
+   mbps:{label:'下载 Mbps',unit:'Mbps',field:'speed_mbps',better:'吞吐越高越好'}
+ };
+ return meta[historyMetric]||meta.ping;
+}
+async function refreshResultHistory(){
+ updateHistoryControls();
+ const url='/api/result-history?range='+encodeURIComponent(historyRange)+'&carrier='+encodeURIComponent(selectedFinalCarrier)+'&ts='+Date.now();
+ const payload=await fetch(url).then(r=>r.json()).catch(e=>({error:e.message,points:[]}));
+ if(payload.error){
+   historyCopy.textContent='历史数据读取失败：'+payload.error;
+   historyCache={points:[]};
+ }else{
+   historyCache=payload;
+ }
+ renderResultHistory();
+}
+function setHistoryRange(range){
+ if(!['1h','24h','7d','30d'].includes(range)){ return; }
+ historyRange=range;
+ saveDashboardState();
+ refreshResultHistory();
+}
+function setHistoryMetric(metric){
+ if(!['ping','speed','mbps'].includes(metric)){ return; }
+ historyMetric=metric;
+ saveDashboardState();
+ renderResultHistory();
+}
+function historyPointValue(point,meta){
+ const value=Number(point?.[meta.field]);
+ return Number.isFinite(value)&&value>0?value:null;
+}
+function historyBucketSize(){
+ return ({'1h':60000,'24h':15*60000,'7d':2*3600000,'30d':8*3600000})[historyRange]||15*60000;
+}
+function historyRangeMs(){
+ return ({'1h':3600000,'24h':86400000,'7d':604800000,'30d':2592000000})[historyRange]||86400000;
+}
+function historyTimeLabel(ts,includeDate=false){
+ const date=new Date(ts);
+ if(!Number.isFinite(date.getTime())){ return '-'; }
+ const hh=String(date.getHours()).padStart(2,'0');
+ const mm=String(date.getMinutes()).padStart(2,'0');
+ if(includeDate){ return (date.getMonth()+1)+'/'+date.getDate()+' '+hh+':'+mm; }
+ return hh+':'+mm;
+}
+function bucketHistoryPoints(points,meta,minT,maxT){
+ const bucketMs=historyBucketSize();
+ const buckets=new Map();
+ for(const point of points){
+   const ts=new Date(point.time).getTime();
+   const value=historyPointValue(point,meta);
+   if(!Number.isFinite(ts)||ts<minT||ts>maxT||value===null){ continue; }
+   const region=String(point.region||'').toUpperCase();
+   const bucket=Math.floor(ts/bucketMs)*bucketMs;
+   const key=region+'|'+bucket;
+   const item=buckets.get(key)||{time:bucket,region,sum:0,count:0,last:null};
+   item.sum+=value;
+   item.count+=1;
+   if(!item.last||ts>new Date(item.last.time).getTime()){ item.last=point; }
+   buckets.set(key,item);
+ }
+ return [...buckets.values()].map(item=>({
+   time:item.time,
+   region:item.region,
+   value:item.sum/item.count,
+   count:item.count,
+   last:item.last
+ })).sort((a,b)=>a.time-b.time);
+}
+function renderResultHistory(){
+ updateHistoryControls();
+ const canvas=document.getElementById('resultHistoryCanvas');
+ if(!canvas){ return; }
+ const meta=historyMetricMeta();
+ const now=Date.now();
+ const rangeMs=historyRangeMs();
+ const minT=now-rangeMs;
+ const maxT=now;
+ const rawPoints=(historyCache?.points||[]).filter(p=>String(p.carrier||'').toLowerCase()===selectedFinalCarrier&&historyPointValue(p,meta)!==null);
+ const points=bucketHistoryPoints(rawPoints,meta,minT,maxT);
+ const regions=[...new Set(points.map(p=>String(p.region||'').toUpperCase()).filter(Boolean))].sort((a,b)=>{
+   const order={HK:1,US:2,JP:3,SG:4,EU:5};
+   return (order[a]||99)-(order[b]||99)||a.localeCompare(b);
+ });
+ historyCopy.textContent=finalCarrierLabel(selectedFinalCarrier)+' · '+historyRange.toUpperCase()+' · '+meta.label+' · 时间桶聚合';
+ const latestByRegion=new Map();
+ rawPoints.forEach(point=>{ const key=String(point.region||'').toUpperCase(); if(!latestByRegion.has(key)||new Date(point.time)>new Date(latestByRegion.get(key).time)){ latestByRegion.set(key,point); } });
+ const colorMap={HK:'#35d39a',US:'#60a5fa',JP:'#f0b84b',SG:'#c084fc',EU:'#f87171'};
+ historyLegend.innerHTML=regions.map(region=>{
+   const p=latestByRegion.get(region);
+   const value=historyPointValue(p,meta);
+   return '<div class="legend-item"><span class="legend-label"><i class="legend-dot" style="background:'+attr(colorMap[region]||'#9fb0bd')+'"></i>'+region+'</span><span class="legend-value">'+fmt(value)+' '+meta.unit+'</span></div>';
+ }).join('')||'<div class="legend-item"><span class="legend-label">暂无数据</span><span class="legend-value">-</span></div>';
+ const latest=[...latestByRegion.values()].sort((a,b)=>new Date(b.time)-new Date(a.time))[0];
+ const bucketLabel=historyRange==='1h'?'1 分钟':(historyRange==='24h'?'15 分钟':(historyRange==='7d'?'2 小时':'8 小时'));
+ const sparse=points.length>0&&points.length<4;
+ historySummary.innerHTML=latest
+   ? '最新采样：'+relativeTime(latest.time)+'<br>'+meta.better+'<br>聚合粒度：'+bucketLabel+'<br>'+(sparse?'采样不足，先只按真实时间落点':'聚合点：'+points.length+' 个')
+   : '等待 '+finalCarrierLabel(selectedFinalCarrier)+' Agent 完成本轮测量';
+ drawHistoryChart(canvas,points,regions,colorMap,meta,minT,maxT,sparse);
+}
+function drawHistoryChart(canvas,points,regions,colorMap,meta,minT,maxT,sparse){
+ const wrap=canvas.parentElement;
+ const width=Math.max(320,Math.floor(wrap.clientWidth));
+ const height=260;
+ const dpr=window.devicePixelRatio||1;
+ canvas.width=Math.floor(width*dpr);
+ canvas.height=Math.floor(height*dpr);
+ canvas.style.width=width+'px';
+ canvas.style.height=height+'px';
+ const ctx=canvas.getContext('2d');
+ ctx.setTransform(dpr,0,0,dpr,0,0);
+ ctx.clearRect(0,0,width,height);
+ const empty=!points.length||!regions.length;
+ historyEmpty.classList.toggle('show',empty);
+ const pad={l:48,r:28,t:20,b:36};
+ const plotW=width-pad.l-pad.r;
+ const plotH=height-pad.t-pad.b;
+ ctx.fillStyle='rgba(255,255,255,.025)';
+ ctx.fillRect(pad.l,pad.t,plotW,plotH);
+ ctx.strokeStyle='rgba(143,160,174,.18)';
+ ctx.lineWidth=1;
+ ctx.font='11px ui-sans-serif, system-ui';
+ ctx.fillStyle='#8fa0ae';
+ for(let i=0;i<=4;i++){
+   const y=pad.t+plotH*i/4;
+   ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(width-pad.r,y); ctx.stroke();
+ }
+ if(empty){ return; }
+ const rangeMs=maxT-minT;
+ const values=points.map(p=>p.value).filter(v=>Number.isFinite(v));
+ let minV=Math.min(...values), maxV=Math.max(...values);
+ if(minV===maxV){ minV=Math.max(0,minV-1); maxV=maxV+1; }
+ const span=maxV-minV;
+ minV=Math.max(0,minV-span*.08);
+ maxV=maxV+span*.12;
+ const xOf=t=>pad.l+(Math.max(minT,Math.min(maxT,new Date(t).getTime()))-minT)/rangeMs*plotW;
+ const yOf=v=>pad.t+(maxV-v)/(maxV-minV)*plotH;
+ for(let i=0;i<=4;i++){
+   const value=maxV-(maxV-minV)*i/4;
+   ctx.fillStyle='#8fa0ae';
+   ctx.fillText(fmt(value),8,pad.t+plotH*i/4+4);
+ }
+ ctx.fillStyle='#8fa0ae';
+ const includeDate=historyRange==='7d'||historyRange==='30d';
+ const tickCount=historyRange==='1h'?4:5;
+ for(let i=0;i<=tickCount;i++){
+   const t=minT+rangeMs*i/tickCount;
+   const x=xOf(t);
+   ctx.strokeStyle='rgba(143,160,174,.12)';
+   ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+plotH); ctx.stroke();
+   const label=historyTimeLabel(t,includeDate);
+   const tw=ctx.measureText(label).width;
+   ctx.fillStyle='#8fa0ae';
+   let labelX=x-tw/2;
+   if(i===0){ labelX=pad.l; }
+   if(i===tickCount){ labelX=width-pad.r-tw; }
+   ctx.fillText(label,Math.max(pad.l,Math.min(width-pad.r-tw,labelX)),height-11);
+ }
+ ctx.fillStyle='rgba(143,160,174,.86)';
+ ctx.fillText(meta.unit,width-pad.r-ctx.measureText(meta.unit).width,pad.t-6);
+ const maxConnectGap=historyBucketSize()*2.5;
+ for(const region of regions){
+   const series=points.filter(p=>String(p.region||'').toUpperCase()===region).sort((a,b)=>a.time-b.time);
+   if(!series.length){ continue; }
+   ctx.strokeStyle=colorMap[region]||'#9fb0bd';
+   ctx.lineWidth=2;
+   ctx.beginPath();
+   let started=false;
+   let lastTime=0;
+   for(const point of series){
+     if(!Number.isFinite(point.value)){ continue; }
+     const x=xOf(point.time), y=yOf(point.value);
+     if(!started||sparse||point.time-lastTime>maxConnectGap){ ctx.moveTo(x,y); started=true; }
+     else { ctx.lineTo(x,y); }
+     lastTime=point.time;
+   }
+   ctx.stroke();
+   for(const point of series){
+     const x=xOf(point.time), y=yOf(point.value);
+     ctx.fillStyle=colorMap[region]||'#9fb0bd';
+     ctx.beginPath(); ctx.arc(x,y,sparse?3.5:2.5,0,Math.PI*2); ctx.fill();
+   }
+ }
+ if(sparse){
+   ctx.fillStyle='rgba(143,160,174,.78)';
+   ctx.font='12px ui-sans-serif, system-ui';
+   ctx.fillText('采样不足：按真实时间显示点位，等后续轮次上报后自动连线',pad.l,pad.t+18);
+ }
 }
 function renderCarrierData(list){
  const candidates=carrierCandidates(list,selectedFinalCarrier,false);
@@ -1725,14 +1947,16 @@ function renderAgents(payload){
 }
 async function refresh(){
  const settingsPromise=settingsCache?Promise.resolve(settingsCache):fetch('/api/settings?ts='+Date.now()).then(r=>r.json()).catch(()=>null);
- const [last,state,seeds,settings,control,agents]=await Promise.all([
+ const [last,state,seeds,settings,control,agents,history]=await Promise.all([
    fetch('/api/last?ts='+Date.now()).then(r=>r.json()).catch(()=>null),
    fetch('/api/state-summary?ts='+Date.now()).then(r=>r.json()).catch(()=>null),
    fetch('/api/seeds?ts='+Date.now()).then(r=>r.json()).catch(()=>null),
    settingsPromise,
    fetch('/api/control?ts='+Date.now()).then(r=>r.json()).catch(()=>null),
-   fetch('/api/agents?ts='+Date.now()).then(r=>r.json()).catch(()=>null)
+   fetch('/api/agents?ts='+Date.now()).then(r=>r.json()).catch(()=>null),
+   fetch('/api/result-history?range='+encodeURIComponent(historyRange)+'&carrier='+encodeURIComponent(selectedFinalCarrier)+'&ts='+Date.now()).then(r=>r.json()).catch(()=>null)
  ]);
+ if(history&&!history.error){ historyCache=history; renderResultHistory(); }
  if(settings&&!settings.error){ settingsCache=settings; }
  if(agents&&Array.isArray(agents.agents)){
    lastAgentFetchError=false;
@@ -1844,6 +2068,13 @@ document.querySelectorAll('#regionFilters .seg').forEach(btn=>{
    renderCarrierData(agentsCache);
  });
 });
+document.querySelectorAll('#historyRangeTabs .seg').forEach(btn=>{
+ btn.addEventListener('click',()=>setHistoryRange(btn.dataset.range));
+});
+document.querySelectorAll('#historyMetricTabs button').forEach(btn=>{
+ btn.addEventListener('click',()=>setHistoryMetric(btn.dataset.metric));
+});
+window.addEventListener('resize',()=>renderResultHistory());
 document.querySelectorAll('th.sortable').forEach(th=>{
  th.addEventListener('click',()=>{
    const key=th.dataset.sort;

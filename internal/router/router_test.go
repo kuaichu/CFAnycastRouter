@@ -1,6 +1,11 @@
 package router
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+
+	"cf-anycast-router/internal/config"
+)
 
 func TestPopPenalty(t *testing.T) {
 	cases := []struct {
@@ -81,6 +86,40 @@ func TestRouteRegionCandidateFallsBackToEffectiveRegion(t *testing.T) {
 	}
 	if got := candidateRecordRegion(candidates[1]); got != "JP" {
 		t.Fatalf("failed conflicting route record region=%s want JP", got)
+	}
+}
+
+func TestRegionalDNSRecordsFollowActiveCandidateRegions(t *testing.T) {
+	cfg := &config.Config{
+		CloudflareDNS: config.CloudflareDNSConfig{
+			ZoneName: "ziher.eu.org",
+		},
+	}
+	candidates := []Candidate{
+		{IP: "104.17.1.1", Stage: "seed-sample", Region: "US", RouteRegion: "US", Score: 120},
+		{IP: "172.67.1.1", Stage: "seed-sample", Region: "EU", RouteRegion: "EU", Score: 180},
+		{IP: "104.20.1.1", Stage: "segment-probe", Region: "HK", RouteRegion: "HK", Score: 80},
+	}
+
+	records := regionalDNSRecords(cfg, "ct", candidates, nil)
+	got := map[string]string{}
+	for _, record := range records {
+		got[record.Region] = record.Domain
+	}
+
+	want := map[string]string{
+		"HK": "ct-cf-hk.ziher.eu.org",
+		"US": "ct-cf-us.ziher.eu.org",
+		"JP": "ct-cf-jp.ziher.eu.org",
+		"SG": "ct-cf-sg.ziher.eu.org",
+		"EU": "ct-cf-eu.ziher.eu.org",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("regional records=%#v want %#v", got, want)
+	}
+	active := activeCandidateRegions(candidates)
+	if !reflect.DeepEqual(active, []string{"US", "EU"}) {
+		t.Fatalf("active regions=%#v want US/EU", active)
 	}
 }
 

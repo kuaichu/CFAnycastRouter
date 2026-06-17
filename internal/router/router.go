@@ -202,11 +202,17 @@ func UpdateRegionalDNS(cfg *config.Config, carrier string, candidates []Candidat
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	records := cfg.CloudflareDNS.CarrierRegionRecords(carrier)
+	records = regionalDNSRecords(cfg, carrier, candidates, records)
 	out := make([]string, 0, len(records))
 	for _, record := range records {
 		best := firstHealthyInRouteRegionForType(candidates, record.Region, record.Type)
 		if best == nil {
-			out = append(out, fmt.Sprintf("cloudflare_dns %s %s %s %s skipped: no healthy candidate", carrier, record.Region, record.Type, record.Domain))
+			update, err := client.DeleteRecord(ctx, record.Region, record.Type, record.Domain)
+			if err != nil {
+				out = append(out, fmt.Sprintf("cloudflare_dns %s %s %s %s delete error: %v", carrier, record.Region, record.Type, record.Domain, err))
+				continue
+			}
+			out = append(out, fmt.Sprintf("cloudflare_dns %s %s %s %s %s", carrier, update.Region, update.Type, update.Domain, update.Action))
 			continue
 		}
 		update, err := client.UpsertRecord(ctx, record.Region, record.Type, record.Domain, best.IP)
@@ -217,6 +223,113 @@ func UpdateRegionalDNS(cfg *config.Config, carrier string, candidates []Candidat
 		out = append(out, fmt.Sprintf("cloudflare_dns %s %s %s %s -> %s %s", carrier, update.Region, update.Type, update.Domain, update.IP, update.Action))
 	}
 	return out
+}
+
+func regionalDNSRecords(cfg *config.Config, carrier string, candidates []Candidate, configured []config.DNSRecordConfig) []config.DNSRecordConfig {
+	records := make(map[string]config.DNSRecordConfig, len(configured)+8)
+	for _, record := range configured {
+		record.Carrier = config.NormalizeCarrier(record.Carrier)
+		record.Region = config.NormalizePOP(record.Region)
+		record.Type = strings.ToUpper(strings.TrimSpace(record.Type))
+		if record.Type == "" {
+			record.Type = "A"
+		}
+		record.Domain = strings.TrimSpace(strings.TrimSuffix(record.Domain, "."))
+		if !record.Enabled || record.Carrier != carrier || record.Region == "" || record.Domain == "" {
+			continue
+		}
+		records[dnsUpdateRecordKey(record.Carrier, record.Region, record.Type)] = record
+	}
+	for _, region := range activeCandidateRegions(candidates) {
+		key := dnsUpdateRecordKey(carrier, region, "A")
+		if _, ok := records[key]; ok {
+			continue
+		}
+		if domain := generatedDNSDomain(cfg.CloudflareDNS, carrier, region); domain != "" {
+			records[key] = config.DNSRecordConfig{Enabled: true, Carrier: carrier, Region: region, Type: "A", Domain: domain}
+		}
+	}
+	for _, region := range []string{"HK", "US", "JP", "SG", "EU"} {
+		key := dnsUpdateRecordKey(carrier, region, "A")
+		if _, ok := records[key]; ok {
+			continue
+		}
+		if domain := generatedDNSDomain(cfg.CloudflareDNS, carrier, region); domain != "" {
+			records[key] = config.DNSRecordConfig{Enabled: true, Carrier: carrier, Region: region, Type: "A", Domain: domain}
+		}
+	}
+	out := make([]config.DNSRecordConfig, 0, len(records))
+	for _, record := range records {
+		out = append(out, record)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Region != out[j].Region {
+			return regionSortRank(out[i].Region) < regionSortRank(out[j].Region) ||
+				(regionSortRank(out[i].Region) == regionSortRank(out[j].Region) && out[i].Region < out[j].Region)
+		}
+		return out[i].Domain < out[j].Domain
+	})
+	return out
+}
+
+func activeCandidateRegions(candidates []Candidate) []string {
+	seen := map[string]struct{}{}
+	for _, candidate := range candidates {
+		if !isSelectableCandidate(candidate) {
+			continue
+		}
+		region := candidateRecordRegion(candidate)
+		if !isKnownRegion(region) {
+			continue
+		}
+		seen[region] = struct{}{}
+	}
+	out := make([]string, 0, len(seen))
+	for region := range seen {
+		out = append(out, region)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return regionSortRank(out[i]) < regionSortRank(out[j]) ||
+			(regionSortRank(out[i]) == regionSortRank(out[j]) && out[i] < out[j])
+	})
+	return out
+}
+
+func generatedDNSDomain(cfg config.CloudflareDNSConfig, carrier, region string) string {
+	carrier = config.NormalizeCarrier(carrier)
+	region = config.NormalizePOP(region)
+	base := strings.TrimPrefix(strings.TrimSuffix(strings.TrimSpace(cfg.ZoneName), "."), ".")
+	if carrier == "" || carrier == "auto" || carrier == "unknown" || region == "" || base == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s-cf-%s.%s", carrier, strings.ToLower(region), base)
+}
+
+func dnsUpdateRecordKey(carrier, region, recordType string) string {
+	carrier = config.NormalizeCarrier(carrier)
+	region = config.NormalizePOP(region)
+	recordType = strings.ToUpper(strings.TrimSpace(recordType))
+	if recordType == "" {
+		recordType = "A"
+	}
+	return carrier + "|" + region + "|" + recordType
+}
+
+func regionSortRank(region string) int {
+	switch region {
+	case "HK":
+		return 1
+	case "US":
+		return 2
+	case "JP":
+		return 3
+	case "SG":
+		return 4
+	case "EU":
+		return 5
+	default:
+		return 99
+	}
 }
 
 func (r *Router) ValidateIPRange(ip string, sampleCount int, minMatchRate float64) (*RangeValidation, error) {

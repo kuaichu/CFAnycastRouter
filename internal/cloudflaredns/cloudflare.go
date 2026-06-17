@@ -68,9 +68,6 @@ func New(cfg config.CloudflareDNSConfig) (*Client, error) {
 	if cfg.ZoneID == "" && cfg.ZoneName == "" {
 		return nil, fmt.Errorf("cloudflare_dns.zone_id or cloudflare_dns.zone_name is required")
 	}
-	if len(cfg.RegionRecords()) == 0 {
-		return nil, fmt.Errorf("cloudflare_dns.record_sets is empty")
-	}
 	return &Client{
 		cfg:    cfg,
 		token:  token,
@@ -122,6 +119,34 @@ func (c *Client) UpsertRecord(ctx context.Context, region, recordType, domain, i
 		return update, err
 	}
 	update.Action = "created"
+	return update, nil
+}
+
+func (c *Client) DeleteRecord(ctx context.Context, region, recordType, domain string) (Update, error) {
+	recordType = strings.ToUpper(strings.TrimSpace(recordType))
+	if recordType == "" {
+		recordType = "A"
+	}
+	update := Update{Region: region, Type: recordType, Domain: domain, Action: "missing"}
+	if c == nil {
+		return update, nil
+	}
+	zoneID, err := c.resolveZoneID(ctx)
+	if err != nil {
+		return update, err
+	}
+	existing, err := c.findRecord(ctx, zoneID, recordType, domain)
+	if err != nil {
+		return update, err
+	}
+	if existing == nil {
+		return update, nil
+	}
+	if err := c.doJSON(ctx, http.MethodDelete, fmt.Sprintf("/zones/%s/dns_records/%s", zoneID, existing.ID), nil, &apiResponse[dnsRecord]{}); err != nil {
+		return update, err
+	}
+	update.IP = existing.Content
+	update.Action = "deleted"
 	return update, nil
 }
 

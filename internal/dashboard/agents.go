@@ -203,6 +203,35 @@ func (r *agentRegistry) candidatesByCarrier(carrier string, maxAge time.Duration
 	return out
 }
 
+type sourcedCandidate struct {
+	router.Candidate
+	Agent string
+}
+
+func (r *agentRegistry) sourcedCandidatesByCarrier(carrier string, maxAge time.Duration) []sourcedCandidate {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	carrier = config.NormalizeCarrier(carrier)
+	cutoff := time.Now().Add(-maxAge)
+	var out []sourcedCandidate
+	for _, snapshot := range r.agents {
+		if config.NormalizeCarrier(snapshot.Carrier) != carrier || snapshot.LastSeen.Before(cutoff) || snapshot.Result == nil {
+			continue
+		}
+		source := strings.TrimSpace(snapshot.DisplayName)
+		if source == "" {
+			source = strings.TrimSpace(snapshot.ProbeSource)
+		}
+		if source == "" {
+			source = strings.TrimSpace(snapshot.AgentID)
+		}
+		for _, candidate := range snapshot.Result.Candidates {
+			out = append(out, sourcedCandidate{Candidate: candidate, Agent: source})
+		}
+	}
+	return out
+}
+
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost || r.Method == http.MethodPut {
 		var input protocol.AgentConfig
@@ -282,6 +311,7 @@ func (s *Server) handleAgentReport(w http.ResponseWriter, r *http.Request) {
 		s.SetLast(report.Result)
 	}
 	if completed && report.Status != "error" {
+		go s.recordResultHistory(snapshot.Carrier)
 		go s.updateAgentDNS(snapshot.Carrier)
 	}
 	writeJSON(w, map[string]any{"ok": true, "agent": snapshot})
@@ -301,6 +331,20 @@ func (s *Server) updateAgentDNS(carrier string) {
 	}
 	for _, output := range router.UpdateRegionalDNS(cfg, carrier, s.agents.candidatesByCarrier(carrier, maxAge)) {
 		log.Printf("[dns] %s", output)
+	}
+}
+
+func (s *Server) refreshAgentDNS() {
+	carriers := map[string]struct{}{}
+	for _, agent := range s.agents.list() {
+		carrier := config.NormalizeCarrier(agent.Carrier)
+		if carrier == "" || carrier == "auto" || carrier == "unknown" || agent.Result == nil {
+			continue
+		}
+		carriers[carrier] = struct{}{}
+	}
+	for carrier := range carriers {
+		s.updateAgentDNS(carrier)
 	}
 }
 
