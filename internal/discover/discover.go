@@ -31,6 +31,7 @@ type SeedSegment struct {
 	CIDR     string
 	Large    bool
 	ProbeIP  string
+	Parent   string
 	Position int
 }
 
@@ -45,17 +46,12 @@ func Targets(cfg *config.Config, st *history.State) []Target {
 	}
 	readyLarge := 0
 	preflightCount := 0
+	var readyLargeSegments []SeedSegment
 	for _, seg := range SeedSegments(cfg) {
 		if seg.Large {
 			profile := segmentProfile(st, cfg.Carrier, seg.CIDR)
 			if profile != nil && profile.PreflightOK {
-				if readyLarge >= cfg.MaxSeedSegmentsPerCycle {
-					continue
-				}
-				readyLarge++
-				for _, sample := range SegmentSamples(seg.CIDR, cfg.SampleStep, randomStart(seg.CIDR), cfg.MaxSamplesPerSegmentPerCycle) {
-					putTarget(seen, Target{IP: sample, Stage: "seed-sample", Segment: seg.CIDR, Carrier: cfg.Carrier, Weight: 1})
-				}
+				readyLargeSegments = append(readyLargeSegments, seg)
 				continue
 			}
 			if profile != nil && !profile.PreflightAt.IsZero() && time.Since(profile.PreflightAt) < time.Hour {
@@ -68,6 +64,15 @@ func Targets(cfg *config.Config, st *history.State) []Target {
 			putTarget(seen, Target{IP: seg.ProbeIP, Stage: "segment-probe", Segment: seg.CIDR, Carrier: cfg.Carrier, Weight: 0.5})
 			continue
 		}
+		for _, sample := range SegmentSamples(seg.CIDR, cfg.SampleStep, randomStart(seg.CIDR), cfg.MaxSamplesPerSegmentPerCycle) {
+			putTarget(seen, Target{IP: sample, Stage: "seed-sample", Segment: seg.CIDR, Carrier: cfg.Carrier, Weight: 1})
+		}
+	}
+	for _, seg := range selectReadySeedSegments(readyLargeSegments, cfg.MaxSeedSegmentsPerCycle) {
+		if readyLarge >= cfg.MaxSeedSegmentsPerCycle {
+			break
+		}
+		readyLarge++
 		for _, sample := range SegmentSamples(seg.CIDR, cfg.SampleStep, randomStart(seg.CIDR), cfg.MaxSamplesPerSegmentPerCycle) {
 			putTarget(seen, Target{IP: sample, Stage: "seed-sample", Segment: seg.CIDR, Carrier: cfg.Carrier, Weight: 1})
 		}
@@ -120,15 +125,19 @@ func SeedSegments(cfg *config.Config) []SeedSegment {
 		if seg.ProbeIP == "" {
 			seg.ProbeIP = firstHost(seg.CIDR)
 		}
+		if seg.Parent == "" {
+			seg.Parent = seg.CIDR
+		}
 		out = append(out, seg)
 	}
 	for _, ip := range cfg.SeedIPs {
 		cidr, ok := IPv4Slash24(ip)
 		if ok {
-			add(SeedSegment{CIDR: cidr, ProbeIP: ip})
+			add(SeedSegment{CIDR: cidr, ProbeIP: ip, Parent: cidr})
 		}
 	}
 	for _, raw := range cfg.SeedCIDRs {
+		parent := strings.TrimSpace(raw)
 		ip, network, err := net.ParseCIDR(raw)
 		if err != nil {
 			continue
@@ -144,7 +153,7 @@ func SeedSegments(cfg *config.Config) []SeedSegment {
 		if ones >= 24 {
 			cidr, ok := IPv4Slash24(base.String())
 			if ok {
-				add(SeedSegment{CIDR: cidr})
+				add(SeedSegment{CIDR: cidr, Parent: parent})
 			}
 			continue
 		}
@@ -157,7 +166,7 @@ func SeedSegments(cfg *config.Config) []SeedSegment {
 			segments := int(total / 256)
 			for i := 0; i < segments; i++ {
 				cidr := segmentCIDRFromUint(start + uint32(i)*256)
-				add(SeedSegment{CIDR: cidr, Large: true, ProbeIP: ipFromUint(start + uint32(i)*256 + 1), Position: i})
+				add(SeedSegment{CIDR: cidr, Large: true, ProbeIP: ipFromUint(start + uint32(i)*256 + 1), Parent: parent, Position: i})
 			}
 			continue
 		}
@@ -166,10 +175,48 @@ func SeedSegments(cfg *config.Config) []SeedSegment {
 			step = 16
 		}
 		for offset := uint32(0); offset < total && len(out) < cfg.MaxSeedSegmentsPerCycle; offset += step * 256 {
-			add(SeedSegment{CIDR: segmentCIDRFromUint(start + offset)})
+			add(SeedSegment{CIDR: segmentCIDRFromUint(start + offset), Parent: parent})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CIDR < out[j].CIDR })
+	return out
+}
+
+func selectReadySeedSegments(segments []SeedSegment, limit int) []SeedSegment {
+	if limit <= 0 || len(segments) <= limit {
+		return segments
+	}
+	byParent := map[string][]SeedSegment{}
+	var parents []string
+	for _, seg := range segments {
+		parent := seg.Parent
+		if parent == "" {
+			parent = seg.CIDR
+		}
+		if _, ok := byParent[parent]; !ok {
+			parents = append(parents, parent)
+		}
+		byParent[parent] = append(byParent[parent], seg)
+	}
+	out := make([]SeedSegment, 0, limit)
+	for len(out) < limit {
+		added := false
+		for _, parent := range parents {
+			group := byParent[parent]
+			if len(group) == 0 {
+				continue
+			}
+			out = append(out, group[0])
+			byParent[parent] = group[1:]
+			added = true
+			if len(out) >= limit {
+				break
+			}
+		}
+		if !added {
+			break
+		}
+	}
 	return out
 }
 
