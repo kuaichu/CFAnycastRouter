@@ -25,6 +25,7 @@ type AgentAssignment struct {
 	CheckIntervalSeconds         int                    `json:"check_interval_seconds"`
 	SampleStep                   int                    `json:"sample_step"`
 	SeedCIDRStep                 int                    `json:"seed_cidr_step"`
+	SampleAllSeedSegments        bool                   `json:"sample_all_seed_segments"`
 	SeedPreflightMaxPerCycle     int                    `json:"seed_preflight_max_per_cycle"`
 	MaxSeedSegmentsPerCycle      int                    `json:"max_seed_segments_per_cycle"`
 	MaxLearnedSegmentsPerCycle   int                    `json:"max_learned_segments_per_cycle"`

@@ -64,16 +64,16 @@ func Targets(cfg *config.Config, st *history.State) []Target {
 			putTarget(seen, Target{IP: seg.ProbeIP, Stage: "segment-probe", Segment: seg.CIDR, Carrier: cfg.Carrier, Weight: 0.5})
 			continue
 		}
-		for _, sample := range SegmentSamples(seg.CIDR, cfg.SampleStep, randomStart(seg.CIDR), cfg.MaxSamplesPerSegmentPerCycle) {
+		for _, sample := range seedSegmentSamples(seg.CIDR, cfg) {
 			putTarget(seen, Target{IP: sample, Stage: "seed-sample", Segment: seg.CIDR, Carrier: cfg.Carrier, Weight: 1})
 		}
 	}
-	for _, seg := range selectReadySeedSegments(readyLargeSegments, cfg.MaxSeedSegmentsPerCycle) {
-		if readyLarge >= cfg.MaxSeedSegmentsPerCycle {
+	for _, seg := range selectReadySeedSegments(readyLargeSegments, cfg.MaxSeedSegmentsPerCycle, cfg.SampleAllSeedSegments) {
+		if !cfg.SampleAllSeedSegments && readyLarge >= cfg.MaxSeedSegmentsPerCycle {
 			break
 		}
 		readyLarge++
-		for _, sample := range SegmentSamples(seg.CIDR, cfg.SampleStep, randomStart(seg.CIDR), cfg.MaxSamplesPerSegmentPerCycle) {
+		for _, sample := range seedSegmentSamples(seg.CIDR, cfg) {
 			putTarget(seen, Target{IP: sample, Stage: "seed-sample", Segment: seg.CIDR, Carrier: cfg.Carrier, Weight: 1})
 		}
 	}
@@ -182,7 +182,17 @@ func SeedSegments(cfg *config.Config) []SeedSegment {
 	return out
 }
 
-func selectReadySeedSegments(segments []SeedSegment, limit int) []SeedSegment {
+func seedSegmentSamples(cidr string, cfg *config.Config) []string {
+	if cfg.SampleAllSeedSegments {
+		return RandomSamples(cidr, cfg.MaxSamplesPerSegmentPerCycle)
+	}
+	return SegmentSamples(cidr, cfg.SampleStep, randomStart(cidr), cfg.MaxSamplesPerSegmentPerCycle)
+}
+
+func selectReadySeedSegments(segments []SeedSegment, limit int, all bool) []SeedSegment {
+	if all {
+		return segments
+	}
 	if limit <= 0 || len(segments) <= limit {
 		return segments
 	}

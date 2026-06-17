@@ -276,6 +276,7 @@ func (r *Runner) applyAssignment(a protocol.AgentAssignment) {
 	if a.SeedCIDRStep > 0 {
 		r.cfg.SeedCIDRStep = a.SeedCIDRStep
 	}
+	r.cfg.SampleAllSeedSegments = a.SampleAllSeedSegments
 	if a.SeedPreflightMaxPerCycle > 0 {
 		r.cfg.SeedPreflightMaxPerCycle = a.SeedPreflightMaxPerCycle
 	}

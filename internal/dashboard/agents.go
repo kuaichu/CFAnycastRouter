@@ -335,6 +335,7 @@ func assignmentFromConfig(cfg *config.Config) protocol.AgentAssignment {
 		CheckIntervalSeconds:         cfg.CheckIntervalSec,
 		SampleStep:                   cfg.SampleStep,
 		SeedCIDRStep:                 cfg.SeedCIDRStep,
+		SampleAllSeedSegments:        cfg.SampleAllSeedSegments,
 		SeedPreflightMaxPerCycle:     cfg.SeedPreflightMaxPerCycle,
 		MaxSeedSegmentsPerCycle:      cfg.MaxSeedSegmentsPerCycle,
 		MaxLearnedSegmentsPerCycle:   cfg.MaxLearnedSegmentsPerCycle,

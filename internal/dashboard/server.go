@@ -727,6 +727,7 @@ button{border-radius:5px;background:#111d27;border-color:#304150;padding:7px 12p
 <div class="field"><label>学习段上限 / 轮</label><input id="setLearnedSegments" type="number" min="0" step="1"></div>
 <div class="field"><label>每段样本数 / 轮</label><input id="setSamplesPerSegment" type="number" min="1" step="1"></div>
 </div>
+<label class="check-row"><input id="setSampleAllSeedSegments" type="checkbox"> 已预检种子段全部参与本轮，每段随机抽固定数量</label>
 <details class="advanced-settings">
 <summary>高级抽样与学习参数</summary>
 <div class="form-grid">
@@ -1382,6 +1383,7 @@ function fillSettings(s){
  setSeedSegments.value=s.max_seed_segments_per_cycle||8;
  setLearnedSegments.value=s.max_learned_segments_per_cycle??16;
  setSamplesPerSegment.value=s.max_samples_per_segment_per_cycle||8;
+ setSampleAllSeedSegments.checked=Boolean(s.sample_all_seed_segments);
  setPromoteMinSamples.value=s.promote_min_samples||6;
  setPromoteProbability.value=Math.round((s.promote_pop_probability||0.7)*100);
  setHotMaxPerSegment.value=s.hot_max_per_segment||8;
@@ -1474,6 +1476,7 @@ function collectSettings(){
    max_route_traces_per_cycle:Number(setTraceBudget.value)||24,
    sample_step:Number(setSampleStep.value)||4,
    seed_cidr_step:Number(setSeedCIDRStep.value)||16,
+   sample_all_seed_segments:setSampleAllSeedSegments.checked,
    seed_preflight_max_per_cycle:Number(setSeedPreflight.value)||256,
    max_seed_segments_per_cycle:Number(setSeedSegments.value)||8,
    max_learned_segments_per_cycle:Math.max(0,Number(setLearnedSegments.value)||0),

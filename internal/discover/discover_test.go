@@ -44,3 +44,36 @@ func TestTargetsSelectReadyLargeSeedSegmentsFairly(t *testing.T) {
 		t.Fatalf("seed sample segment count=%d want %d: %#v", got, cfg.MaxSeedSegmentsPerCycle, counts)
 	}
 }
+
+func TestTargetsCanSampleEveryReadySeedSegment(t *testing.T) {
+	cfg := &config.Config{
+		Carrier:                      "cu",
+		SeedCIDRs:                    []string{"104.17.144.0/20", "104.20.16.0/20"},
+		SampleAllSeedSegments:        true,
+		MaxSeedSegmentsPerCycle:      4,
+		MaxSamplesPerSegmentPerCycle: 1,
+		SeedPreflightMaxPerCycle:     32,
+	}
+	st := history.New()
+	now := time.Now()
+	segments := SeedSegments(cfg)
+	for _, seg := range segments {
+		st.RecordSegmentPreflight(seg.CIDR, cfg.Carrier, seg.ProbeIP, true, "", now)
+	}
+
+	targets := Targets(cfg, st)
+	seenSegments := map[string]int{}
+	for _, target := range targets {
+		if target.Stage == "seed-sample" {
+			seenSegments[target.Segment]++
+		}
+	}
+	if len(seenSegments) != len(segments) {
+		t.Fatalf("sampled segments=%d want all %d: %#v", len(seenSegments), len(segments), seenSegments)
+	}
+	for segment, count := range seenSegments {
+		if count != cfg.MaxSamplesPerSegmentPerCycle {
+			t.Fatalf("segment %s sample count=%d want %d", segment, count, cfg.MaxSamplesPerSegmentPerCycle)
+		}
+	}
+}

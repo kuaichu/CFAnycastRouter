@@ -74,6 +74,7 @@ func TestSaveManageSettingsPersistsAgentBudgets(t *testing.T) {
 	settings.MaxRouteTracesPerCycle = 18
 	settings.SeedPreflightMaxPerCycle = 30
 	settings.MaxSeedSegmentsPerCycle = 9
+	settings.SampleAllSeedSegments = true
 	settings.MaxLearnedSegmentsPerCycle = 11
 	settings.MaxSamplesPerSegmentPerCycle = 6
 	settings.PromoteMinSamples = 8
@@ -90,6 +91,7 @@ func TestSaveManageSettingsPersistsAgentBudgets(t *testing.T) {
 	}
 	if got.ProbeAttempts != 7 || got.ProbeTimeoutSec != 5 || got.MaxRouteTracesPerCycle != 18 ||
 		got.SeedPreflightMaxPerCycle != 30 || got.MaxSeedSegmentsPerCycle != 9 ||
+		!got.SampleAllSeedSegments ||
 		got.MaxLearnedSegmentsPerCycle != 11 || got.MaxSamplesPerSegmentPerCycle != 6 ||
 		got.PromoteMinSamples != 8 || got.PromotePOPProbability != 0.8 ||
 		got.HotMaxPerSegment != 10 || got.HotMaxScore != 88 {

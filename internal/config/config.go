@@ -52,6 +52,7 @@ type Config struct {
 
 	SampleStep                   int      `yaml:"sample_step"`
 	SeedCIDRStep                 int      `yaml:"seed_cidr_step"`
+	SampleAllSeedSegments        bool     `yaml:"sample_all_seed_segments"`
 	SeedPreflightMaxPerCycle     int      `yaml:"seed_preflight_max_per_cycle"`
 	MaxSeedSegmentsPerCycle      int      `yaml:"max_seed_segments_per_cycle"`
 	MaxLearnedSegmentsPerCycle   int      `yaml:"max_learned_segments_per_cycle"`
@@ -128,6 +129,7 @@ type ManageSettings struct {
 	MaxRouteTracesPerCycle       int                 `json:"max_route_traces_per_cycle"`
 	SampleStep                   int                 `json:"sample_step"`
 	SeedCIDRStep                 int                 `json:"seed_cidr_step"`
+	SampleAllSeedSegments        bool                `json:"sample_all_seed_segments"`
 	SeedPreflightMaxPerCycle     int                 `json:"seed_preflight_max_per_cycle"`
 	MaxSeedSegmentsPerCycle      int                 `json:"max_seed_segments_per_cycle"`
 	MaxLearnedSegmentsPerCycle   int                 `json:"max_learned_segments_per_cycle"`
@@ -571,6 +573,7 @@ func (c *Config) ManageSettings() ManageSettings {
 		MaxRouteTracesPerCycle:       c.MaxRouteTracesPerCycle,
 		SampleStep:                   c.SampleStep,
 		SeedCIDRStep:                 c.SeedCIDRStep,
+		SampleAllSeedSegments:        c.SampleAllSeedSegments,
 		SeedPreflightMaxPerCycle:     c.SeedPreflightMaxPerCycle,
 		MaxSeedSegmentsPerCycle:      c.MaxSeedSegmentsPerCycle,
 		MaxLearnedSegmentsPerCycle:   c.MaxLearnedSegmentsPerCycle,
@@ -711,6 +714,7 @@ func SaveManageSettings(path string, settings ManageSettings) (*Config, error) {
 	cfg.MaxRouteTracesPerCycle = settings.MaxRouteTracesPerCycle
 	cfg.SampleStep = settings.SampleStep
 	cfg.SeedCIDRStep = settings.SeedCIDRStep
+	cfg.SampleAllSeedSegments = settings.SampleAllSeedSegments
 	cfg.SeedPreflightMaxPerCycle = settings.SeedPreflightMaxPerCycle
 	cfg.MaxSeedSegmentsPerCycle = settings.MaxSeedSegmentsPerCycle
 	cfg.MaxLearnedSegmentsPerCycle = settings.MaxLearnedSegmentsPerCycle
@@ -757,6 +761,7 @@ func saveManageSettingsNode(path string, cfg *Config) error {
 	upsertScalarWithTag(mapping, "max_route_traces_per_cycle", fmt.Sprintf("%d", cfg.MaxRouteTracesPerCycle), "!!int")
 	upsertScalarWithTag(mapping, "sample_step", fmt.Sprintf("%d", cfg.SampleStep), "!!int")
 	upsertScalarWithTag(mapping, "seed_cidr_step", fmt.Sprintf("%d", cfg.SeedCIDRStep), "!!int")
+	upsertScalarWithTag(mapping, "sample_all_seed_segments", fmt.Sprintf("%t", cfg.SampleAllSeedSegments), "!!bool")
 	upsertScalarWithTag(mapping, "seed_preflight_max_per_cycle", fmt.Sprintf("%d", cfg.SeedPreflightMaxPerCycle), "!!int")
 	upsertScalarWithTag(mapping, "max_seed_segments_per_cycle", fmt.Sprintf("%d", cfg.MaxSeedSegmentsPerCycle), "!!int")
 	upsertScalarWithTag(mapping, "max_learned_segments_per_cycle", fmt.Sprintf("%d", cfg.MaxLearnedSegmentsPerCycle), "!!int")
