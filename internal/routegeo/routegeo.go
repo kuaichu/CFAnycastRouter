@@ -72,6 +72,13 @@ type routeResolver struct {
 	cache  *geoInfoCache
 }
 
+type traceAttempt struct {
+	raw   string
+	err   error
+	hops  []string
+	infos map[string]geoInfo
+}
+
 type execTraceRunner struct{}
 
 type ipAPIGeoQuerier struct {
@@ -83,6 +90,11 @@ type geoInfoCache struct {
 	items map[string]geoCacheEntry
 	ttl   time.Duration
 	max   int
+}
+
+type geoLookupRequest struct {
+	found   map[string]geoInfo
+	missing []string
 }
 
 type geoCacheEntry struct {
@@ -165,40 +177,48 @@ func newRouteResolver(opts TraceOptions) *routeResolver {
 }
 
 func (r *routeResolver) Trace(ip string, timeout time.Duration, opts TraceOptions) Result {
-	out := Result{IP: strings.TrimSpace(ip)}
-	if net.ParseIP(out.IP).To4() == nil {
-		out.Error = "invalid IPv4"
-		return out
+	target := strings.TrimSpace(ip)
+	out := Result{IP: target}
+	if net.ParseIP(target).To4() == nil {
+		return traceErrorResult(target, "invalid IPv4")
 	}
 	if timeout <= 0 {
 		timeout = 8 * time.Second
 	}
-	raw, err := r.runTrace(out.IP, timeout, opts)
-	out.Raw = raw
-	if err != nil {
-		out.Error = err.Error()
-	}
-	out.Hops = parseHops(raw)
-	if len(out.Hops) == 0 {
-		if out.Error == "" {
-			out.Error = "no route hops parsed"
-		}
+	attempt := r.collectTrace(target, timeout, opts)
+	out.Raw = attempt.raw
+	out.Hops = attempt.hops
+	out.Error = traceAttemptError(attempt)
+	if len(attempt.hops) == 0 {
 		return out
 	}
-	infos := parseEmbeddedGeoInfos(raw)
-	for ip, info := range r.lookupGeo(out.Hops, timeout, infos) {
-		infos[ip] = info
+	attempt, pick := r.selectBestAttempt(target, timeout, opts, attempt)
+	if pick == nil {
+		return traceAttemptResult(target, attempt, out.Error, nil)
 	}
-	pick := pickRouteHint(out.IP, out.Hops, infos)
-	if pick == nil || shouldTryEmbeddedFallback(*pick) {
-		if fallback := r.traceEmbeddedGeoFallback(out.IP, timeout, opts); fallback != nil {
-			fallbackPick := pickRouteHint(out.IP, fallback.hops, fallback.infos)
-			if shouldUseEmbeddedFallback(out.IP, out.Hops, pick, fallback.hops, fallbackPick) {
-				out.Hops = fallback.hops
-				infos = fallback.infos
-				pick = fallbackPick
-			}
-		}
+	return traceAttemptResult(target, attempt, out.Error, pick)
+}
+
+func traceErrorResult(ip, message string) Result {
+	return Result{IP: ip, Error: message}
+}
+
+func traceAttemptError(attempt traceAttempt) string {
+	if attempt.err != nil {
+		return attempt.err.Error()
+	}
+	if len(attempt.hops) == 0 {
+		return "no route hops parsed"
+	}
+	return ""
+}
+
+func traceAttemptResult(target string, attempt traceAttempt, existingError string, pick *geoInfo) Result {
+	out := Result{
+		IP:    target,
+		Raw:   attempt.raw,
+		Hops:  attempt.hops,
+		Error: existingError,
 	}
 	if pick == nil {
 		if out.Error == "" {
@@ -206,36 +226,67 @@ func (r *routeResolver) Trace(ip string, timeout time.Duration, opts TraceOption
 		}
 		return out
 	}
+	out.Error = existingError
 	out.HintIP = pick.Query
 	out.Country = pick.Country
 	out.City = pick.City
 	out.ISP = pick.ISP
 	out.ASN = pick.AS
 	out.Region = regionFromGeo(*pick)
-	out.Confidence = confidenceFor(out.IP, out.HintIP, out.Hops, *pick)
+	out.Confidence = confidenceFor(target, out.HintIP, attempt.hops, *pick)
 	return out
 }
 
-type embeddedGeoTrace struct {
-	hops  []string
-	infos map[string]geoInfo
+func (r *routeResolver) selectBestAttempt(target string, timeout time.Duration, opts TraceOptions, primary traceAttempt) (traceAttempt, *geoInfo) {
+	pick := pickRouteHint(target, primary.hops, primary.infos)
+	if pick == nil || shouldTryEmbeddedFallback(*pick) {
+		if fallback, ok := r.collectEmbeddedFallbackTrace(target, timeout, opts); ok {
+			fallbackPick := pickRouteHint(target, fallback.hops, fallback.infos)
+			if shouldUseEmbeddedFallback(target, primary.hops, pick, fallback.hops, fallbackPick) {
+				return fallback, fallbackPick
+			}
+		}
+	}
+	return primary, pick
 }
 
-func (r *routeResolver) traceEmbeddedGeoFallback(ip string, timeout time.Duration, opts TraceOptions) *embeddedGeoTrace {
+func (r *routeResolver) collectTrace(ip string, timeout time.Duration, opts TraceOptions) traceAttempt {
+	raw, err := r.runTrace(ip, timeout, opts)
+	attempt := traceAttempt{
+		raw:   raw,
+		err:   err,
+		hops:  parseHops(raw),
+		infos: parseEmbeddedGeoInfos(raw),
+	}
+	r.enrichTrace(&attempt, timeout)
+	return attempt
+}
+
+func (r *routeResolver) collectEmbeddedFallbackTrace(ip string, timeout time.Duration, opts TraceOptions) (traceAttempt, bool) {
 	args, ok := nextTraceReportArgs(opts.Args)
 	if !ok || strings.TrimSpace(opts.Command) == "" {
-		return nil
+		return traceAttempt{}, false
 	}
-	raw, err := r.runTrace(ip, timeout, TraceOptions{Command: opts.Command, Args: args})
-	if err != nil && raw == "" {
-		return nil
+	fallback := r.collectTrace(ip, timeout, TraceOptions{Command: opts.Command, Args: args})
+	if fallback.err != nil && fallback.raw == "" {
+		return traceAttempt{}, false
 	}
-	hops := parseHops(raw)
-	infos := parseEmbeddedGeoInfos(raw)
-	if len(hops) == 0 || len(infos) == 0 {
-		return nil
+	if len(fallback.hops) == 0 || len(fallback.infos) == 0 {
+		return traceAttempt{}, false
 	}
-	return &embeddedGeoTrace{hops: hops, infos: infos}
+	return fallback, true
+}
+
+func (r *routeResolver) enrichTrace(attempt *traceAttempt, timeout time.Duration) {
+	if attempt == nil || len(attempt.hops) == 0 {
+		return
+	}
+	if attempt.infos == nil {
+		attempt.infos = map[string]geoInfo{}
+	}
+	for ip, info := range r.lookupGeo(attempt.hops, timeout, attempt.infos) {
+		attempt.infos[ip] = info
+	}
 }
 
 func (r *routeResolver) runTrace(ip string, timeout time.Duration, opts TraceOptions) (string, error) {
@@ -435,25 +486,41 @@ func parseNTRRawHops(raw string) []string {
 }
 
 func (r *routeResolver) lookupGeo(ips []string, timeout time.Duration, known map[string]geoInfo) map[string]geoInfo {
-	out := map[string]geoInfo{}
+	request := r.prepareGeoLookup(ips, known, time.Now())
+	if len(request.missing) == 0 {
+		return request.found
+	}
+	for ip, info := range r.fetchMissingGeo(request.missing, timeout) {
+		request.found[ip] = info
+	}
+	return request.found
+}
+
+func (r *routeResolver) prepareGeoLookup(ips []string, known map[string]geoInfo, now time.Time) geoLookupRequest {
+	request := geoLookupRequest{found: map[string]geoInfo{}}
 	var missing []string
 	seen := map[string]bool{}
-	now := time.Now()
 	for _, ip := range ips {
 		if !isPublicIPv4(ip) || seen[ip] {
 			continue
 		}
 		seen[ip] = true
 		if info, ok := known[ip]; ok && regionFromGeo(info) != "unknown" {
-			out[ip] = info
+			request.found[ip] = info
 			continue
 		}
 		if info, ok := r.cache.Get(ip, now); ok {
-			out[ip] = info
+			request.found[ip] = info
 			continue
 		}
 		missing = append(missing, ip)
 	}
+	request.missing = missing
+	return request
+}
+
+func (r *routeResolver) fetchMissingGeo(missing []string, timeout time.Duration) map[string]geoInfo {
+	out := map[string]geoInfo{}
 	if len(missing) == 0 {
 		return out
 	}
@@ -465,6 +532,7 @@ func (r *routeResolver) lookupGeo(ips []string, timeout time.Duration, known map
 	if err != nil {
 		return out
 	}
+	now := time.Now()
 	cacheUpdates := map[string]geoInfo{}
 	for _, info := range infos {
 		if info.Status == "success" && info.Query != "" {

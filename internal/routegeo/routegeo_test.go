@@ -20,6 +20,21 @@ func (f *fakeTraceRunner) Run(ctx context.Context, ip string, opts TraceOptions)
 	return f.raw, f.err
 }
 
+type sequenceTraceRunner struct {
+	raws  []string
+	calls int
+	args  [][]string
+}
+
+func (s *sequenceTraceRunner) Run(ctx context.Context, ip string, opts TraceOptions) (string, error) {
+	s.calls++
+	s.args = append(s.args, append([]string(nil), opts.Args...))
+	if s.calls <= len(s.raws) {
+		return s.raws[s.calls-1], nil
+	}
+	return "", nil
+}
+
 type fakeGeoQuerier map[string]geoInfo
 
 func (f fakeGeoQuerier) Lookup(ctx context.Context, ips []string) ([]geoInfo, error) {
@@ -62,6 +77,47 @@ func TestTraceWithInjectedRunnerAndGeoQuerier(t *testing.T) {
 	}
 }
 
+func TestTraceWithOptionsUsesEmbeddedFallbackAttempt(t *testing.T) {
+	runner := &sequenceTraceRunner{raws: []string{
+		`1 219.158.3.174
+2 203.131.240.78
+3 172.67.64.104`,
+		`1   219.158.3.174 AS4837 中国 广东省 广州市 中国联通
+2   203.131.240.78 AS2914 中国 香港 NTT America, Inc.
+3   103.22.203.27 AS13335 中国 香港 Cloudflare
+4   172.67.64.104 AS13335 Anycast Cloudflare`,
+	}}
+	result := TraceWithOptions("172.67.64.104", time.Second, TraceOptions{
+		Command: "nexttrace",
+		Args:    []string{"--raw", "-q", "1", "{ip}"},
+		runner:  runner,
+		geoQuerier: fakeGeoQuerier{
+			"203.131.240.78": {
+				Status:      "success",
+				Query:       "203.131.240.78",
+				Country:     "Japan",
+				CountryCode: "JP",
+				City:        "Chiyoda City",
+				ISP:         "NTT America, Inc.",
+				AS:          "AS2914 NTT America, Inc.",
+			},
+		},
+		cache: newGeoInfoCache(8, time.Hour),
+	})
+	if runner.calls != 2 {
+		t.Fatalf("runner calls=%d want 2", runner.calls)
+	}
+	if result.Error != "" {
+		t.Fatalf("unexpected trace error: %s", result.Error)
+	}
+	if result.HintIP != "103.22.203.27" || result.Region != "HK" {
+		t.Fatalf("fallback result hint=%s region=%s want 103.22.203.27/HK: %#v", result.HintIP, result.Region, result)
+	}
+	if len(runner.args) < 2 || strings.Contains(strings.Join(runner.args[1], " "), "--raw") {
+		t.Fatalf("fallback args should convert raw nexttrace args to report mode: %#v", runner.args)
+	}
+}
+
 func TestGeoInfoCacheExpiresAndEvicts(t *testing.T) {
 	cache := newGeoInfoCache(1, time.Minute)
 	now := time.Unix(1000, 0)
@@ -80,6 +136,36 @@ func TestGeoInfoCacheExpiresAndEvicts(t *testing.T) {
 	}, now)
 	if len(cache.items) > 1 {
 		t.Fatalf("cache size=%d want <=1", len(cache.items))
+	}
+}
+
+func TestPrepareGeoLookupUsesKnownAndCacheBeforeMissing(t *testing.T) {
+	now := time.Unix(1000, 0)
+	cache := newGeoInfoCache(8, time.Hour)
+	cache.SetMany(map[string]geoInfo{
+		"198.51.100.2": {Query: "198.51.100.2", CountryCode: "US"},
+	}, now)
+	resolver := newRouteResolver(TraceOptions{
+		cache:      cache,
+		geoQuerier: fakeGeoQuerier{},
+	})
+	request := resolver.prepareGeoLookup(
+		[]string{"10.0.0.1", "203.0.113.1", "198.51.100.2", "198.51.100.3", "198.51.100.3"},
+		map[string]geoInfo{"203.0.113.1": {Query: "203.0.113.1", CountryCode: "HK"}},
+		now,
+	)
+	if len(request.found) != 2 {
+		t.Fatalf("found=%#v want known and cached entries", request.found)
+	}
+	if got := regionFromGeo(request.found["203.0.113.1"]); got != "HK" {
+		t.Fatalf("known region=%s want HK", got)
+	}
+	if got := regionFromGeo(request.found["198.51.100.2"]); got != "US" {
+		t.Fatalf("cached region=%s want US", got)
+	}
+	wantMissing := []string{"198.51.100.3"}
+	if !reflect.DeepEqual(request.missing, wantMissing) {
+		t.Fatalf("missing=%#v want %#v", request.missing, wantMissing)
 	}
 }
 
