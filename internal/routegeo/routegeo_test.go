@@ -189,42 +189,16 @@ func TestEmbeddedFallbackCanOverrideMiddleNTTHop(t *testing.T) {
 	}
 }
 
-func TestStaticRouteGeo(t *testing.T) {
-	cases := map[string]string{
-		"103.22.203.71":   "HK",
-		"129.250.3.187":   "HK",
-		"203.131.240.78":  "HK",
-		"203.131.241.220": "HK",
-		"202.77.23.30":    "HK",
-		"141.101.72.123":  "US",
-	}
-	for ip, want := range cases {
-		info, ok := staticRouteGeo(ip)
-		if !ok {
-			t.Fatalf("staticRouteGeo(%s) not found", ip)
-		}
-		if got := regionFromGeo(info); got != want {
-			t.Fatalf("staticRouteGeo(%s)=%s want %s", ip, got, want)
-		}
-	}
-}
-
-func TestPickRouteHintUsesKnownHKHandoffWhenCloudflareHopIsMissing(t *testing.T) {
+func TestPickRouteHintUsesEmbeddedHKHandoffWhenCloudflareHopIsMissing(t *testing.T) {
 	target := "172.67.64.82"
-	hops := []string{
-		"10.0.0.1",
-		"219.158.103.34",
-		"219.158.3.106",
-		"203.131.241.220",
-		"129.250.3.187",
-		target,
-	}
-	infos := map[string]geoInfo{}
-	for _, hop := range hops {
-		if info, ok := staticRouteGeo(hop); ok {
-			infos[hop] = info
-		}
-	}
+	raw := `1   10.0.0.1        *                         RFC1918
+2   219.158.103.34 AS4837                    中国 广东省 广州市 中国联通/骨干网
+3   219.158.3.106  AS4837                    中国 广东省 广州市 中国联通/骨干网
+4   203.131.241.220 AS2914                   中国 香港   NTT America, Inc.
+5   129.250.3.187  AS2914                    中国 香港   NTT America, Inc.
+6   172.67.64.82   AS13335                   Anycast Cloudflare`
+	hops := parseHops(raw)
+	infos := parseEmbeddedGeoInfos(raw)
 	pick := pickRouteHint(target, hops, infos)
 	if pick == nil {
 		t.Fatal("expected HK route hint")

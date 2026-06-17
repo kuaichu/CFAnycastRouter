@@ -52,7 +52,6 @@ var ntrRawHopPattern = regexp.MustCompile(`^\s*(\d+)\|((?:\d{1,3}\.){3}\d{1,3})\
 var asnPattern = regexp.MustCompile(`\bAS\d+\b`)
 
 var geoLookupSem = make(chan struct{}, 2)
-var ptrLookupSem = make(chan struct{}, 8)
 var geoCache = struct {
 	sync.RWMutex
 	items map[string]geoInfo
@@ -130,14 +129,6 @@ func traceEmbeddedGeoFallback(ip string, timeout time.Duration, opts TraceOption
 	}
 	hops := parseHops(raw)
 	infos := parseEmbeddedGeoInfos(raw)
-	for _, hop := range hops {
-		if _, ok := infos[hop]; ok {
-			continue
-		}
-		if info, ok := staticRouteGeo(hop); ok {
-			infos[hop] = info
-		}
-	}
 	if len(hops) == 0 || len(infos) == 0 {
 		return nil
 	}
@@ -338,14 +329,6 @@ func lookupGeo(ips []string, timeout time.Duration, known map[string]geoInfo) ma
 			out[ip] = info
 			continue
 		}
-		if info, ok := staticRouteGeo(ip); ok {
-			out[ip] = info
-			continue
-		}
-		if info, ok := reverseRouteGeo(ip, timeout); ok {
-			out[ip] = info
-			continue
-		}
 		geoCache.RLock()
 		info, ok := geoCache.items[ip]
 		geoCache.RUnlock()
@@ -389,108 +372,6 @@ func lookupGeo(ips []string, timeout time.Duration, known map[string]geoInfo) ma
 		geoCache.Unlock()
 	}
 	return out
-}
-
-func staticRouteGeo(ip string) (geoInfo, bool) {
-	parsed := net.ParseIP(ip).To4()
-	if parsed == nil {
-		return geoInfo{}, false
-	}
-	switch {
-	case ip == "202.77.23.30":
-		return geoInfo{
-			Status:      "success",
-			Query:       ip,
-			Country:     "Hong Kong",
-			CountryCode: "HK",
-			City:        "Hong Kong",
-			ISP:         "China Unicom Global",
-			AS:          "AS10099 China Unicom Global",
-		}, true
-	case ip == "129.250.3.187" || ip == "203.131.240.78" || ip == "203.131.241.220":
-		return geoInfo{
-			Status:      "success",
-			Query:       ip,
-			Country:     "Hong Kong",
-			CountryCode: "HK",
-			City:        "Hong Kong",
-			ISP:         "NTT America, Inc.",
-			AS:          "AS2914 NTT America, Inc.",
-		}, true
-	case parsed[0] == 103 && parsed[1] == 22 && parsed[2] == 203:
-		return geoInfo{
-			Status:      "success",
-			Query:       ip,
-			Country:     "Hong Kong",
-			CountryCode: "HK",
-			City:        "Hong Kong",
-			ISP:         "Cloudflare, Inc.",
-			AS:          "AS13335 Cloudflare, Inc.",
-		}, true
-	case parsed[0] == 141 && parsed[1] == 101 && parsed[2] == 72:
-		return geoInfo{
-			Status:      "success",
-			Query:       ip,
-			Country:     "United States",
-			CountryCode: "US",
-			RegionName:  "California",
-			City:        "Los Angeles",
-			ISP:         "Cloudflare, Inc.",
-			AS:          "AS13335 Cloudflare, Inc.",
-		}, true
-	default:
-		return geoInfo{}, false
-	}
-}
-
-func reverseRouteGeo(ip string, timeout time.Duration) (geoInfo, bool) {
-	if !shouldReverseLookup(ip) {
-		return geoInfo{}, false
-	}
-	lookupTimeout := 800 * time.Millisecond
-	if timeout > 0 && timeout < lookupTimeout {
-		lookupTimeout = timeout
-	}
-	ptrLookupSem <- struct{}{}
-	defer func() { <-ptrLookupSem }()
-	ctx, cancel := context.WithTimeout(context.Background(), lookupTimeout)
-	defer cancel()
-	names, err := net.DefaultResolver.LookupAddr(ctx, ip)
-	if err != nil {
-		return geoInfo{}, false
-	}
-	for _, name := range names {
-		name = strings.TrimSuffix(strings.TrimSpace(name), ".")
-		if name == "" {
-			continue
-		}
-		info, ok := geoInfoFromTraceLine(ip + " " + name)
-		if !ok || regionFromGeo(info) == "unknown" {
-			continue
-		}
-		info.Query = ip
-		return info, true
-	}
-	return geoInfo{}, false
-}
-
-func shouldReverseLookup(ip string) bool {
-	parsed := net.ParseIP(ip).To4()
-	if parsed == nil {
-		return false
-	}
-	switch {
-	case parsed[0] == 129 && parsed[1] == 250:
-		return true
-	case parsed[0] == 203 && parsed[1] == 131:
-		return true
-	case parsed[0] == 202 && parsed[1] == 77:
-		return true
-	case parsed[0] == 103 && parsed[1] == 22:
-		return true
-	default:
-		return false
-	}
 }
 
 func parseEmbeddedGeoInfos(raw string) map[string]geoInfo {
