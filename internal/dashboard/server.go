@@ -1013,13 +1013,10 @@ function knownRegion(v){
  v=String(v||'').toUpperCase();
  return v&&v!=='UNKNOWN'&&v!=='-'&&v!=='PREFLIGHT'?v:'';
 }
-function hasReliableRouteHint(c){
- return String(c?.route_hint_ip||'').trim()&&Number(c?.route_confidence||0)>=0.75;
-}
 function candidateRegion(c){
  const route=knownRegion(c?.route_region);
  const cf=knownRegion(c?.cf_region);
- if(String(c?.route_error||'').trim()&&route&&cf&&route!==cf){ return hasReliableRouteHint(c)?route:cf; }
+ if(String(c?.route_error||'').trim()&&route&&cf&&route!==cf){ return cf; }
  return knownRegion(c?.region)||route||cf||'unknown';
 }
 function matchesRegion(c){
@@ -1245,8 +1242,7 @@ function candidateRow(c,last){
    String(c.route_error||'').trim()&&
    knownRegion(c.route_region)&&
    knownRegion(c.cf_region)&&
-   knownRegion(c.route_region)!==knownRegion(c.cf_region)&&
-   !hasReliableRouteHint(c)
+   knownRegion(c.route_region)!==knownRegion(c.cf_region)
  );
  const speedText=c.cf_speed_rtt_ms>0?(fmt(c.cf_speed_rtt_ms)+'ms'):(c.cf_speed_error?'失败':'-');
  const speedMbps=c.cf_speed_mbps>0?fmt(c.cf_speed_mbps):'-';

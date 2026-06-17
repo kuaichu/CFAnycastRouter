@@ -68,6 +68,44 @@ func TestNextTraceRawReportPicksJapanCloudflareHop(t *testing.T) {
 	}
 }
 
+func TestNextTraceReportPrefersCloudflareUSHopAfterHKTransit(t *testing.T) {
+	target := "104.17.151.135"
+	raw := `1   10.0.0.1        *                         RFC1918
+                                              0.53 ms / 0.37 ms / 0.33 ms
+2   101.64.132.1    AS4837                    中国 浙江省 宁波市 海曙 中国联通
+                                              6.75 ms / 6.89 ms / 8.64 ms
+3   *
+4   221.12.177.9    AS4837                    中国 浙江省 宁波市  中国联通
+                                              11.58 ms / 11.74 ms / * ms
+5   *
+6   219.158.113.102 AS4837                    中国 北京市   中国联通/骨干网
+                                              10.59 ms / 10.50 ms / * ms
+7   *
+8   219.158.97.182  AS4837                    中国 香港   中国联通/骨干网
+                                              133.24 ms / 134.05 ms / 133.36 ms
+9   152.179.48.217  AS701                     美国    Verizon
+    xe-0-1-0.gw8.sjc7.alter.net               160.35 ms / 160.51 ms / 159.83 ms
+10  *
+11  *
+12  172.68.188.20   AS13335                   美国    Cloudflare
+                                              148.31 ms / 150.72 ms / 149.24 ms
+13  104.17.151.135  AS13335                   美国    Cloudflare
+                                              147.50 ms / 149.71 ms / 148.89 ms`
+
+	hops := parseHops(raw)
+	infos := parseEmbeddedGeoInfos(raw)
+	pick := pickRouteHint(target, hops, infos)
+	if pick == nil {
+		t.Fatal("expected route hint from complete NextTrace report")
+	}
+	if pick.Query != "172.68.188.20" {
+		t.Fatalf("hint IP=%s want 172.68.188.20", pick.Query)
+	}
+	if got := regionFromGeo(*pick); got != "US" {
+		t.Fatalf("route hint region=%s want US; info=%#v", got, *pick)
+	}
+}
+
 func TestNTRReportArgsFromRaw(t *testing.T) {
 	got, ok := ntrReportArgs([]string{"-4", "--raw", "--icmp-mode", "2", "-d", "disable-geoip", "-q", "1", "{ip}"})
 	if !ok {

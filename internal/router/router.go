@@ -423,7 +423,7 @@ func (r *Router) probeOne(c Candidate, now time.Time, routeUsed *int64, routeBud
 	c.RouteISP = route.ISP
 	c.RouteConfidence = route.Confidence
 	c.RouteError = route.Error
-	c.Region, c.RegionSource = effectiveRegion(c.RouteRegion, c.CFRegion, c.RouteError, c.RouteConfidence, c.RouteHintIP)
+	c.Region, c.RegionSource = effectiveRegion(c.RouteRegion, c.CFRegion, c.RouteError)
 	if c.Region == "" {
 		c.Region = "unknown"
 	}
@@ -704,9 +704,6 @@ func candidateRecordRegion(c Candidate) string {
 		isKnownRegion(routeRegion) &&
 		isKnownRegion(cfRegion) &&
 		routeRegion != cfRegion {
-		if hasReliableRouteHint(c.RouteConfidence, c.RouteHintIP) {
-			return routeRegion
-		}
 		return cfRegion
 	}
 	if region := normalizeRegion(c.Region); isKnownRegion(region) {
@@ -803,16 +800,13 @@ func stageBonus(target discover.Target) float64 {
 	}
 }
 
-func effectiveRegion(routeRegion, cfRegion, routeError string, routeConfidence float64, routeHintIP string) (string, string) {
+func effectiveRegion(routeRegion, cfRegion, routeError string) (string, string) {
 	routeRegion = normalizeRegion(routeRegion)
 	cfRegion = normalizeRegion(cfRegion)
 	if strings.TrimSpace(routeError) != "" &&
 		isKnownRegion(routeRegion) &&
 		isKnownRegion(cfRegion) &&
 		routeRegion != cfRegion {
-		if hasReliableRouteHint(routeConfidence, routeHintIP) {
-			return routeRegion, "route"
-		}
 		return cfRegion, "cf"
 	}
 	if isKnownRegion(routeRegion) {
@@ -822,10 +816,6 @@ func effectiveRegion(routeRegion, cfRegion, routeError string, routeConfidence f
 		return cfRegion, "cf"
 	}
 	return "unknown", "unknown"
-}
-
-func hasReliableRouteHint(confidence float64, hintIP string) bool {
-	return strings.TrimSpace(hintIP) != "" && confidence >= 0.75
 }
 
 func normalizeRegion(region string) string {

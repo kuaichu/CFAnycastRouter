@@ -24,25 +24,21 @@ func TestPopPenalty(t *testing.T) {
 }
 
 func TestEffectiveRegionFallsBackToCFColo(t *testing.T) {
-	region, source := effectiveRegion("", "JP", "", 0, "")
+	region, source := effectiveRegion("", "JP", "")
 	if region != "JP" || source != "cf" {
 		t.Fatalf("effectiveRegion without local route=%s/%s want JP/cf", region, source)
 	}
-	region, source = effectiveRegion("HK", "JP", "", 0, "")
+	region, source = effectiveRegion("HK", "JP", "")
 	if region != "HK" || source != "route" {
 		t.Fatalf("effectiveRegion with local route=%s/%s want HK/route", region, source)
 	}
-	region, source = effectiveRegion("HK", "JP", "route trace timed out", 0, "")
+	region, source = effectiveRegion("HK", "JP", "route trace timed out")
 	if region != "JP" || source != "cf" {
 		t.Fatalf("effectiveRegion with failed conflicting route=%s/%s want JP/cf", region, source)
 	}
-	region, source = effectiveRegion("JP", "JP", "route trace timed out", 0, "")
+	region, source = effectiveRegion("JP", "JP", "route trace timed out")
 	if region != "JP" || source != "route" {
 		t.Fatalf("effectiveRegion with failed matching route=%s/%s want JP/route", region, source)
-	}
-	region, source = effectiveRegion("HK", "US", "route trace timed out", 0.85, "219.158.97.182")
-	if region != "HK" || source != "route" {
-		t.Fatalf("effectiveRegion with reliable timed-out route=%s/%s want HK/route", region, source)
 	}
 }
 
@@ -85,27 +81,6 @@ func TestRouteRegionCandidateFallsBackToEffectiveRegion(t *testing.T) {
 	}
 	if got := candidateRecordRegion(candidates[1]); got != "JP" {
 		t.Fatalf("failed conflicting route record region=%s want JP", got)
-	}
-}
-
-func TestRouteRegionCandidateKeepsReliableTimedOutRoute(t *testing.T) {
-	candidate := Candidate{
-		IP:              "104.17.151.135",
-		Stage:           "seed-sample",
-		Region:          "US",
-		RouteRegion:     "HK",
-		CFRegion:        "US",
-		RouteHintIP:     "219.158.97.182",
-		RouteConfidence: 0.85,
-		RouteError:      "route trace timed out",
-		Score:           647,
-	}
-
-	if got := candidateRecordRegion(candidate); got != "HK" {
-		t.Fatalf("reliable timed-out route record region=%s want HK", got)
-	}
-	if !isSelectableCandidate(candidate) {
-		t.Fatal("reliable timed-out route candidate should remain selectable")
 	}
 }
 
