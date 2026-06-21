@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"cf-anycast-router/internal/config"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -93,6 +94,27 @@ func TestDashboardPreservesSelectedTableTextDuringRefresh(t *testing.T) {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("dashboard is missing selection preservation marker %q", expected)
 		}
+	}
+}
+
+func TestResultHistoryDoesNotInventDefaultRegions(t *testing.T) {
+	now := time.Now()
+	cfg := &config.Config{
+		CloudflareDNS: config.CloudflareDNSConfig{RecordSets: []config.DNSRecordConfig{
+			{Enabled: true, Carrier: "cu", Region: "HK", Type: "A", Domain: "cu-cf-hk.example.com"},
+			{Enabled: true, Carrier: "cu", Region: "US", Type: "A", Domain: "cu-cf-us.example.com"},
+		}},
+	}
+	points := buildResultHistoryPoints(now, cfg, "cu", []sourcedCandidate{
+		{Candidate: router.Candidate{IP: "172.67.65.150", Carrier: "cu", Stage: "seed-sample", Region: "HK", CFRegion: "HK", PingRTTMs: 113.4, Score: 100}, Agent: "宁波联通"},
+		{Candidate: router.Candidate{IP: "104.17.144.62", Carrier: "cu", Stage: "seed-sample", Region: "US", CFRegion: "US", PingRTTMs: 131.4, Score: 120}, Agent: "宁波联通"},
+	})
+	var regions []string
+	for _, point := range points {
+		regions = append(regions, point.Region)
+	}
+	if strings.Join(regions, ",") != "HK,US" {
+		t.Fatalf("history regions=%v, want only HK and US", regions)
 	}
 }
 

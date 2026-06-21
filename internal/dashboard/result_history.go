@@ -202,7 +202,7 @@ func buildResultHistoryPoints(now time.Time, cfg *config.Config, carrier string,
 }
 
 func finalHistoryRegions(cfg *config.Config, carrier string, candidates []sourcedCandidate) []string {
-	set := map[string]struct{}{"HK": {}, "US": {}, "JP": {}, "SG": {}}
+	set := map[string]struct{}{}
 	if cfg != nil {
 		for _, record := range cfg.CloudflareDNS.CarrierRegionRecords(carrier) {
 			if record.Enabled == false || strings.ToUpper(strings.TrimSpace(record.Type)) != "A" {

@@ -1312,10 +1312,14 @@ function renderResultHistory(){
  const maxT=now;
  const rawPoints=(historyCache?.points||[]).filter(p=>String(p.carrier||'').toLowerCase()===selectedFinalCarrier&&historyPointValue(p,meta)!==null);
  const points=bucketHistoryPoints(rawPoints,meta,minT,maxT);
- const regions=[...new Set(points.map(p=>String(p.region||'').toUpperCase()).filter(Boolean))].sort((a,b)=>{
+ const allRegions=[...new Set(points.map(p=>String(p.region||'').toUpperCase()).filter(Boolean))].sort((a,b)=>{
    const order={HK:1,US:2,JP:3,SG:4,EU:5};
    return (order[a]||99)-(order[b]||99)||a.localeCompare(b);
  });
+ const regionCounts=new Map();
+ points.forEach(p=>{ const region=String(p.region||'').toUpperCase(); if(region){ regionCounts.set(region,(regionCounts.get(region)||0)+1); } });
+ let regions=allRegions.filter(region=>(regionCounts.get(region)||0)>=2);
+ if(!regions.length){ regions=allRegions; }
  historyCopy.textContent=finalCarrierLabel(selectedFinalCarrier)+' · '+historyRange.toUpperCase()+' · '+meta.label+' · 时间桶聚合';
  const latestByRegion=new Map();
  rawPoints.forEach(point=>{ const key=String(point.region||'').toUpperCase(); if(!latestByRegion.has(key)||new Date(point.time)>new Date(latestByRegion.get(key).time)){ latestByRegion.set(key,point); } });
