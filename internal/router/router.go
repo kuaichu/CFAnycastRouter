@@ -758,31 +758,6 @@ func firstHealthy(candidates []Candidate) *Candidate {
 	return nil
 }
 
-func firstHealthyInRegion(candidates []Candidate, region string) *Candidate {
-	return firstHealthyInRegionForType(candidates, region, "A")
-}
-
-func firstHealthyInRegionForType(candidates []Candidate, region, recordType string) *Candidate {
-	region = strings.ToUpper(strings.TrimSpace(region))
-	recordType = strings.ToUpper(strings.TrimSpace(recordType))
-	for i := range candidates {
-		if candidates[i].Region != region {
-			continue
-		}
-		ip := net.ParseIP(candidates[i].IP)
-		if recordType == "A" && (ip == nil || ip.To4() == nil) {
-			continue
-		}
-		if recordType == "AAAA" && (ip == nil || ip.To4() != nil) {
-			continue
-		}
-		if isSelectableCandidate(candidates[i]) {
-			return &candidates[i]
-		}
-	}
-	return nil
-}
-
 func firstHealthyInRouteRegionForType(candidates []Candidate, region, recordType string) *Candidate {
 	region = strings.ToUpper(strings.TrimSpace(region))
 	recordType = strings.ToUpper(strings.TrimSpace(recordType))

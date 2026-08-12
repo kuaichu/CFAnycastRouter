@@ -2,12 +2,14 @@ package dashboard
 
 import (
 	"cf-anycast-router/internal/config"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -15,6 +17,30 @@ import (
 	"cf-anycast-router/internal/protocol"
 	"cf-anycast-router/internal/router"
 )
+
+type failingResponseWriter struct {
+	header      http.Header
+	writeHeader int
+	err         error
+}
+
+func (w *failingResponseWriter) Header() http.Header {
+	return w.header
+}
+
+func (w *failingResponseWriter) WriteHeader(_ int) {
+	w.writeHeader++
+}
+
+func (w *failingResponseWriter) Write(_ []byte) (int, error) {
+	if w.writeHeader == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	if w.err != nil {
+		return 0, w.err
+	}
+	return 0, errors.New("write failed")
+}
 
 func TestLastSnapshotCopiesCandidatesUnderLock(t *testing.T) {
 	s := New(0, "", "", nil, nil, nil, nil, nil)
@@ -35,6 +61,40 @@ func TestLastSnapshotCopiesCandidatesUnderLock(t *testing.T) {
 	s.UpsertCandidate(router.Candidate{IP: "104.20.23.138", Score: 43})
 	if len(got.Candidates) != 1 {
 		t.Fatalf("snapshot changed after server mutation: %#v", got.Candidates)
+	}
+}
+
+func TestHealthAndVersionRoutes(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+	if err := os.WriteFile(statePath, []byte(`{"profiles":{},"segments":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := New(0, statePath, "", nil, nil, nil, nil, nil)
+
+	for _, path := range []string{"/healthz", "/version"} {
+		rec := httptest.NewRecorder()
+		s.routes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s status=%d body=%s", path, rec.Code, rec.Body.String())
+		}
+	}
+
+	if err := os.WriteFile(statePath, []byte(`{"profiles":`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	s.routes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("invalid state health status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestWriteJSONDoesNotWriteSecondHeaderAfterWriteFailure(t *testing.T) {
+	w := &failingResponseWriter{header: make(http.Header), err: syscall.ECONNRESET}
+	writeJSON(w, map[string]bool{"ok": true})
+	if w.writeHeader != 1 {
+		t.Fatalf("WriteHeader called %d times, want 1", w.writeHeader)
 	}
 }
 

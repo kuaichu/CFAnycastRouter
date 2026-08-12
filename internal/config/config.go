@@ -63,7 +63,6 @@ type Config struct {
 	HotMaxScore                  float64  `yaml:"hot_max_score"`
 	PreferredPOPs                []string `yaml:"preferred_pops"`
 
-	Pools   []PoolConfig   `yaml:"pools"`
 	Outputs []OutputConfig `yaml:"outputs"`
 
 	CloudflareDNS CloudflareDNSConfig `yaml:"cloudflare_dns"`
@@ -71,13 +70,6 @@ type Config struct {
 
 	ProbeTimeout  time.Duration `yaml:"-"`
 	CheckInterval time.Duration `yaml:"-"`
-}
-
-type PoolConfig struct {
-	Name    string   `yaml:"name"`
-	Carrier string   `yaml:"carrier"`
-	POP     string   `yaml:"pop"`
-	IPs     []string `yaml:"ips"`
 }
 
 type OutputConfig struct {
@@ -278,7 +270,7 @@ func (c *Config) normalize() error {
 	if c.StatePath == "" {
 		c.StatePath = "data/state.json"
 	}
-	if len(c.SeedIPs) == 0 && len(c.SeedCIDRs) == 0 && len(c.Pools) == 0 && c.ServerURL == "" {
+	if len(c.SeedIPs) == 0 && len(c.SeedCIDRs) == 0 && c.ServerURL == "" {
 		return fmt.Errorf("at least one seed_ips or seed_cidrs entry is required")
 	}
 	for i, ip := range c.SeedIPs {
@@ -415,26 +407,6 @@ func (c *Config) normalize() error {
 	if c.SpeedTest.TopN > 20 {
 		c.SpeedTest.TopN = 20
 	}
-	for i := range c.Pools {
-		p := &c.Pools[i]
-		p.Name = strings.TrimSpace(p.Name)
-		p.Carrier = NormalizeCarrier(p.Carrier)
-		p.POP = NormalizePOP(p.POP)
-		if p.Name == "" {
-			return fmt.Errorf("pools[%d].name is required", i)
-		}
-		if p.Carrier == "" {
-			return fmt.Errorf("pools[%d].carrier is required", i)
-		}
-		if p.POP == "" {
-			return fmt.Errorf("pools[%d].pop is required", i)
-		}
-		for _, ip := range p.IPs {
-			if net.ParseIP(strings.TrimSpace(ip)) == nil {
-				return fmt.Errorf("pool %s has invalid IP %q", p.Name, ip)
-			}
-		}
-	}
 	c.ProbeTimeout = time.Duration(c.ProbeTimeoutSec) * time.Second
 	c.CheckInterval = time.Duration(c.CheckIntervalSec) * time.Second
 	return nil
@@ -507,16 +479,6 @@ func TimeBucket(t time.Time) string {
 	default:
 		return "18:00-24:00"
 	}
-}
-
-func (c *Config) CandidatePools() []PoolConfig {
-	out := make([]PoolConfig, 0, len(c.Pools))
-	for _, pool := range c.Pools {
-		if pool.Carrier == c.Carrier || pool.Carrier == "unknown" || c.Carrier == "unknown" {
-			out = append(out, pool)
-		}
-	}
-	return out
 }
 
 func (c *Config) PreferredPOPSet() map[string]bool {

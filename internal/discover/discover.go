@@ -12,13 +12,6 @@ import (
 	"cf-anycast-router/internal/history"
 )
 
-type CandidateIP struct {
-	IP      string
-	Pool    string
-	Carrier string
-	POP     string
-}
-
 type Target struct {
 	IP      string
 	Stage   string
@@ -385,40 +378,4 @@ func segmentCIDRFromUint(v uint32) string {
 
 func ipFromUint(v uint32) string {
 	return fmt.Sprintf("%d.%d.%d.%d", byte(v>>24), byte(v>>16), byte(v>>8), byte(v))
-}
-
-func FromPools(pools []config.PoolConfig) []CandidateIP {
-	seen := map[string]CandidateIP{}
-	for _, pool := range pools {
-		for _, raw := range pool.IPs {
-			ip := strings.TrimSpace(raw)
-			if ip == "" {
-				continue
-			}
-			key := pool.Carrier + "|" + pool.POP + "|" + ip
-			seen[key] = CandidateIP{
-				IP:      ip,
-				Pool:    pool.Name,
-				Carrier: pool.Carrier,
-				POP:     pool.POP,
-			}
-		}
-	}
-	out := make([]CandidateIP, 0, len(seen))
-	for _, c := range seen {
-		out = append(out, c)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Carrier != out[j].Carrier {
-			return out[i].Carrier < out[j].Carrier
-		}
-		if out[i].POP != out[j].POP {
-			return out[i].POP < out[j].POP
-		}
-		if out[i].Pool != out[j].Pool {
-			return out[i].Pool < out[j].Pool
-		}
-		return out[i].IP < out[j].IP
-	})
-	return out
 }

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -16,8 +17,10 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
+	"cf-anycast-router/internal/buildinfo"
 	"cf-anycast-router/internal/config"
 	"cf-anycast-router/internal/history"
 	"cf-anycast-router/internal/router"
@@ -133,8 +136,22 @@ func (s *Server) Start() {
 	if s.port <= 0 {
 		return
 	}
+	mux := s.routes()
+	s.server = &http.Server{Addr: fmt.Sprintf(":%d", s.port), Handler: mux}
+	go s.refreshAgentDNS()
+	go func() {
+		log.Printf("[dashboard] http://0.0.0.0:%d", s.port)
+		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("[dashboard] error: %v", err)
+		}
+	}()
+}
+
+func (s *Server) routes() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
+	mux.HandleFunc("/healthz", s.handleHealth)
+	mux.HandleFunc("/version", s.handleVersion)
 	mux.HandleFunc("/install.sh", s.handleInstallScript)
 	mux.HandleFunc("/download/", s.handleAgentBinary)
 	mux.HandleFunc("/source.tar.gz", s.handleSourceArchive)
@@ -151,14 +168,34 @@ func (s *Server) Start() {
 	mux.HandleFunc("/api/result-history", s.handleResultHistory)
 	mux.HandleFunc("/api/agent/config", s.handleAgentConfig)
 	mux.HandleFunc("/api/agent/report", s.handleAgentReport)
-	s.server = &http.Server{Addr: fmt.Sprintf(":%d", s.port), Handler: mux}
-	go s.refreshAgentDNS()
-	go func() {
-		log.Printf("[dashboard] http://0.0.0.0:%d", s.port)
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("[dashboard] error: %v", err)
+	return mux
+}
+
+func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
+	response := struct {
+		Status string `json:"status"`
+		State  string `json:"state"`
+	}{Status: "ok", State: "ok"}
+	status := http.StatusOK
+	if strings.TrimSpace(s.statePath) != "" {
+		data, err := os.ReadFile(s.statePath)
+		if err != nil || !json.Valid(data) {
+			status = http.StatusServiceUnavailable
+			response.Status = "degraded"
+			response.State = "unreadable"
 		}
-	}()
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+func (s *Server) handleVersion(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(struct {
+		Version string `json:"version"`
+		Commit  string `json:"commit"`
+	}{Version: buildinfo.Version, Commit: buildinfo.Commit})
 }
 
 func bestPartial(candidates []router.Candidate) *router.Candidate {
@@ -553,7 +590,12 @@ func seedText(ips, cidrs []string) string {
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		http.Error(w, "json encode failed: "+err.Error(), http.StatusInternalServerError)
+		// The response may already be committed when the client disconnects.
+		// A second WriteHeader only creates noisy net/http warnings and cannot
+		// change the status already sent to the client.
+		if !errors.Is(err, syscall.ECONNRESET) && !errors.Is(err, syscall.EPIPE) {
+			log.Printf("[dashboard] write JSON response: %v", err)
+		}
 	}
 }
 
