@@ -130,10 +130,13 @@ go run . server config.yaml
 VPS 一键安装 agent。脚本会按 CPU 架构直接下载预编译二进制，不需要在 Agent 机器安装 Go、Git 或现场编译。安装脚本和二进制均优先从母鸡下载，母鸡不可用时才回退到 GitHub：
 
 ```bash
-(curl -fsSL http://172.23.93.195:19199/install.sh \
+SERVER_IP="192.0.2.10"
+(curl -fsSL "http://${SERVER_IP}:19199/install.sh" \
   || curl -fsSL https://raw.githubusercontent.com/kuaichu/CFAnycastRouter/main/install.sh) \
-  | sudo bash -s -- --server http://172.23.93.195:19199 --carrier auto
+  | sudo bash -s -- --server "http://${SERVER_IP}:19199" --carrier auto
 ```
+
+将 `SERVER_IP` 替换为 Agent 能访问的母鸡地址。
 
 安装脚本会自动安装 NextTrace 完整版用于路由地区识别；如果安装失败，agent 会继续运行并回退到系统 `mtr` / `traceroute` / `tracepath`。需要跳过时加 `--skip-nexttrace`。
 
@@ -162,8 +165,40 @@ go test ./...
 go build -o cf-router.exe .
 ```
 
+正式发布时可在构建阶段注入版本和 commit；如果不注入，`/version` 会显示 `dev` 和 `unknown`：
+
+```powershell
+go build -trimpath `
+  -ldflags "-s -w -X cf-anycast-router/internal/buildinfo.Version=1.0.0 -X cf-anycast-router/internal/buildinfo.Commit=<COMMIT>" `
+  -o cf-router.exe .
+```
+
 如果旧进程正占用 `cf-router.exe`，先停掉旧进程，或临时构建为：
 
 ```powershell
 go build -o cf-router-new.exe .
 ```
+
+## 健康检查与升级验证
+
+母鸡的 dashboard 监听端口由 `web_port` 配置，默认示例使用 `19199`。服务提供两个无需鉴权的运行状态端点：
+
+```bash
+SERVER_IP="192.0.2.10"
+curl -fsS "http://${SERVER_IP}:19199/healthz"
+curl -fsS "http://${SERVER_IP}:19199/version"
+```
+
+- `/healthz` 在服务可响应且 `state_path` 指向有效 JSON 时返回 HTTP 200；状态文件缺失或损坏时返回 HTTP 503。
+- `/version` 返回构建时注入的 `version` 和 `commit`。
+
+替换生产二进制前应备份当前二进制、配置和 `data/`。重启后至少确认服务没有反复重启，并验证 dashboard、健康检查和主要状态 API：
+
+```bash
+systemctl is-active cf-anycast-router.service
+curl -fsS http://127.0.0.1:19199/healthz
+curl -fsS http://127.0.0.1:19199/version
+curl -fsS http://127.0.0.1:19199/api/state-summary
+```
+
+任一检查失败时，恢复备份的旧二进制并重启服务；不要覆盖现有配置和状态文件。
